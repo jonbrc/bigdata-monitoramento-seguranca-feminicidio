@@ -115,5 +115,7 @@ UF_CODIGO_PARA_SIGLA = {
 # ---------------------------------------------------------------------------
 # Saída
 # ---------------------------------------------------------------------------
+OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes_2025.csv"
+OUTPUT_SEPARATOR = ","
 OUTPUT_ENCODING = "utf-8"
 EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"

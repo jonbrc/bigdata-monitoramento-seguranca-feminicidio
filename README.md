@@ -29,7 +29,7 @@ A tabela de municípios é necessária porque o Sinesp identifica o município s
 ├── data/
 │   ├── raw/          # bases brutas (fora do Git; ver abaixo)
 │   ├── reference/    # municipios_ibge.csv (versionado)
-│   └── processed/    # CSV final gerado pelo ETL
+│   └── processed/    # violencia_feminicidio_municipio_mes_2025.csv (saída do ETL)
 ├── docs/
 │   └── analise_exploratoria.md   # gerado por etl/exploratory_analysis.py
 ├── etl/
@@ -37,6 +37,10 @@ A tabela de municípios é necessária porque o Sinesp identifica o município s
 │   ├── extract.py                # leitura das bases (SIM em blocos)
 │   ├── padronizacao.py           # normalização de nomes e códigos IBGE
 │   ├── transform_sinesp.py       # tratamento da Base 1 (Sinesp)
+│   ├── transform_sim.py          # tratamento da Base 2 (SIM)
+│   ├── merge.py                  # relacionamento Sinesp × SIM
+│   ├── validate.py               # verificações do resultado
+│   ├── main.py                   # pipeline completo (ponto de entrada)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
 ├── requirements.txt
 └── README.md
@@ -67,6 +71,18 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Execução do ETL
+
+Com as bases em `data/raw/` e o ambiente ativado, na raiz do repositório:
+
+```bash
+python -m etl.main
+```
+
+O script lê as duas bases, trata cada uma, relaciona, valida e grava
+`data/processed/violencia_feminicidio_municipio_mes_2025.csv` (cerca de 30 s).
+Se alguma verificação falhar, o CSV não é gravado e o script termina com código 1.
+
 ## Análise exploratória
 
 Na raiz do repositório:
@@ -92,3 +108,33 @@ Teste isolado: `python -m etl.transform_sinesp` (imprime as contagens de cada pa
 | 7 | Tipos | Contagens como inteiros; `data_referencia` vira `ano` e `mes`. |
 | 8 | Código IBGE | Associado por UF + nome normalizado com `data/reference/municipios_ibge.csv`; 10 grafias divergentes resolvidas por uma lista explícita de equivalências em `etl/config.py`. O nome do município passa a ser o oficial da tabela de referência. |
 | 9 | Pivot | Uma linha por **município × mês**; para cada evento, as colunas `sinesp_<evento>_fem` (vítimas femininas) e `sinesp_<evento>_total` (todas as vítimas). |
+
+## Tratamento — Base 2 (SIM)
+
+Teste isolado: `python -m etl.transform_sim` (imprime as contagens de cada passo).
+
+| # | Passo | Decisão e justificativa |
+|---|---|---|
+| 1 | Recorte na leitura | O CSV (~937 mil linhas) é lido em blocos de 200 mil e só ficam em memória os óbitos com `SEXO = 2` (feminino) e causa básica entre X85 e Y09 (agressão), como definido na AI02. O `*` do CID é removido antes da comparação, se existir. |
+| 2 | Duplicidades | `contador` é só um número sequencial. Linhas idênticas em todas as outras colunas seriam a mesma declaração repetida e são removidas (nenhuma no arquivo atual). |
+| 3 | Colunas | Ficam só as colunas mapeadas na AI02. Data de nascimento, dados da mãe e demais campos saem (minimização de dados, LGPD). |
+| 4 | Datas | `DTOBITO` (`ddmmaaaa`) vira data e depois `ano` e `mes`; datas inválidas sairiam (nenhuma). |
+| 5 | Período coberto | Base preliminar: óbitos só até 02/09/2025, agosto incompleto. Meses considerados cobertos: janeiro a agosto (`SIM_MESES_COBERTOS` em `etl/config.py`). |
+| 6 | Município de residência | `CODMUNRES` é a chave de relacionamento (AI02). Códigos terminados em `0000` indicam município ignorado (só a UF é conhecida) e saem, pois não podem ser ligados a um município (6 óbitos). |
+| 7 | Raça/cor | Código convertido em categoria (branca, preta, amarela, parda, indígena); nulo vira "ignorada". |
+| 8 | Agregação | Uma linha por município × mês: `sim_obitos_fem_agressao` (total) e `sim_obitos_fem_<raça>`. O script confere que o total de óbitos não muda. |
+
+## Relacionamento (Sinesp × SIM)
+
+```text
+Sinesp.uf + Sinesp.municipio ──(tabela IBGE)──► codigo_ibge (7 díg.) ──► 6 primeiros dígitos ┐
+Sinesp.data_referencia ──► ano + mes                                                         ├─ chave
+SIM.CODMUNRES (6 díg.) + SIM.DTOBITO ──► ano + mes                                           ┘
+```
+
+- **Campos:** código IBGE do município (6 dígitos) + ano + mês. O município do SIM é o de **residência** (`CODMUNRES`), como definido na AI02.
+- **Padronização:** o Sinesp só tem UF + nome; o nome é normalizado (sem acento, maiúsculas, sem hífen/apóstrofo) e associado ao código IBGE pela tabela de referência. O código de 7 dígitos é reduzido aos 6 usados pelo SIM.
+- **Tipo de JOIN:** `FULL OUTER JOIN` sobre a grade município × mês. Assim nenhum óbito do SIM se perde e os municípios sem óbito continuam presentes com os dados do Sinesp.
+- **Por quê:** o SIM não registra "feminicídio" e não há identificador comum de vítima entre as bases; o óbito feminino por agressão é usado como aproximação e o cruzamento é feito por município e mês (AI02).
+- **Período:** nos meses cobertos pelo SIM (jan–ago/2025), município sem óbito recebe 0; nos meses sem cobertura (set–dez), as colunas do SIM ficam vazias (NULL) e `sim_periodo_coberto = False`.
+- **Linhas sem ocorrência:** município × mês em que todas as contagens das duas bases são zero é removido (AI02, otimização de volume).
