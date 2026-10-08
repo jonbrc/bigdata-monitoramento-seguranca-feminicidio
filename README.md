@@ -30,9 +30,13 @@ A tabela de municípios é necessária porque o Sinesp identifica o município s
 │   ├── raw/          # bases brutas (fora do Git; ver abaixo)
 │   ├── reference/    # municipios_ibge.csv (versionado)
 │   └── processed/    # CSV final gerado pelo ETL
-├── docs/             # relatórios gerados (análise exploratória)
+├── docs/
+│   └── analise_exploratoria.md   # gerado por etl/exploratory_analysis.py
 ├── etl/
-│   └── config.py     # caminhos e parâmetros centralizados
+│   ├── config.py                 # caminhos e parâmetros centralizados
+│   ├── extract.py                # leitura das bases (SIM em blocos)
+│   ├── padronizacao.py           # normalização de nomes e códigos IBGE
+│   └── exploratory_analysis.py   # análise exploratória das bases brutas
 ├── requirements.txt
 └── README.md
 ```
@@ -50,6 +54,8 @@ Os nomes ficam configurados em `etl/config.py`. O ETL apenas lê esses arquivos 
 
 ## Ambiente
 
+Requer Python 3.10 ou superior.
+
 ```bash
 python -m venv .venv
 # Windows
@@ -59,3 +65,13 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
+
+## Análise exploratória
+
+Na raiz do repositório:
+
+```bash
+python -m etl.exploratory_analysis
+```
+
+Lê as duas bases (o SIM em blocos de 200 mil linhas) e gera [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md) com o perfil de cada uma: registros, colunas, tipos, nulos, duplicidades, período, consistência dos códigos e compatibilidade das chaves de município entre as fontes. Leva cerca de 1 minuto.

@@ -1,4 +1,4 @@
-""" Configuração centralizada do ETL.
+"""Configuração centralizada do ETL.
 
 Todos os caminhos, nomes de arquivo, encodings e parâmetros de tratamento
 ficam aqui. Os demais módulos importam deste arquivo e não definem caminhos
@@ -26,6 +26,36 @@ SINESP_SHEET = "2025"
 # O motor "calamine" lê o .xlsx ~7x mais rápido que o openpyxl (≈15 s vs ≈110 s).
 SINESP_EXCEL_ENGINE = "calamine"
 
+# Recorte temático (AI02: "violência letal e violência contra mulheres").
+# Só eventos registrados por município; Estupro e Estupro de vulnerável ficam
+# de fora porque a base só os traz agregados por UF (município "NÃO INFORMADO").
+# Valor = sufixo usado nos nomes das colunas do CSV final.
+SINESP_EVENTOS = {
+    "Feminicídio": "feminicidio",
+    "Tentativa de feminicídio": "tentativa_feminicidio",
+    "Homicídio doloso": "homicidio_doloso",
+    "Tentativa de homicídio": "tentativa_homicidio",
+    "Lesão corporal seguida de morte": "lesao_corporal_morte",
+    "Roubo seguido de morte (latrocínio)": "latrocinio",
+}
+SINESP_ABRANGENCIA = "Estadual"
+SINESP_MUNICIPIO_NAO_INFORMADO = "NÃO INFORMADO"
+
+# Grafias do Sinesp que não batem com o nome oficial do IBGE mesmo após a
+# normalização (nome antigo ou variante). (UF, nome no Sinesp) -> código IBGE.
+SINESP_MUNICIPIOS_EQUIVALENCIAS = {
+    ("BA", "MUQUÉM DO SÃO FRANCISCO"): "2922250",  # Muquém de São Francisco
+    ("BA", "SANTA TEREZINHA"): "2928505",          # Santa Teresinha
+    ("MG", "DONA EUZÉBIA"): "3122900",             # Dona Eusébia
+    ("MG", "SÃO TOMÉ DAS LETRAS"): "3165206",      # São Thomé das Letras
+    ("PE", "SÃO CAITANO"): "2613107",              # São Caetano
+    ("RN", "CAMPO GRANDE"): "2401305",             # Augusto Severo (Campo Grande)
+    ("RN", "JANUÁRIO CICCO"): "2405306",           # Januário Cicco (Boa Saúde)
+    ("SE", "AMPARO DO SÃO FRANCISCO"): "2800100",  # Amparo de São Francisco
+    ("SP", "FLORÍNEA"): "3516101",                 # Florínia
+    ("TO", "TABOCÃO"): "1708254",                  # Fortaleza do Tabocão
+}
+
 # ---------------------------------------------------------------------------
 # Base 2 — SIM 2025 preliminar (Ministério da Saúde)
 # ---------------------------------------------------------------------------
@@ -34,11 +64,26 @@ SIM_SEPARATOR = ";"
 SIM_ENCODING = "latin-1"
 SIM_CHUNKSIZE = 200_000  # leitura em blocos (Pandas chunking)
 
+# Colunas do SIM mapeadas na AI02 (itens 4 — base de dados 2).
+SIM_COLUNAS_AI02 = [
+    "DTOBITO", "SEXO", "CAUSABAS", "CODMUNRES", "CODMUNOCOR", "RACACOR",
+    "IDADE", "ESTCIV", "ESC2010", "LOCOCOR", "CODESTAB", "NATURAL",
+    "CODMUNNATU", "TIPOBITO",
+]
+
+# Recorte definido na AI02: óbitos de mulheres (SEXO = 2) cuja causa básica
+# seja agressão, CID-10 X85 a Y09. A comparação usa os 3 primeiros caracteres
+# do CID (categoria), em ordem lexicográfica: X85..X99, Y00..Y09.
+SIM_SEXO_FEMININO = "2"
+SIM_CID_AGRESSAO_INICIO = "X85"
+SIM_CID_AGRESSAO_FIM = "Y09"
+
 # ---------------------------------------------------------------------------
 # Tabela de referência — municípios com código IBGE
 # ---------------------------------------------------------------------------
 # A base do Sinesp identifica o município apenas por UF + nome; o SIM usa o
 # código IBGE. Esta tabela faz a ponte entre os dois (ver README).
+# Fonte: https://github.com/kelvins/municipios-brasileiros (csv/municipios.csv)
 MUNICIPIOS_FILE = REFERENCE_DIR / "municipios_ibge.csv"
 MUNICIPIOS_ENCODING = "utf-8"
 
@@ -56,3 +101,4 @@ UF_CODIGO_PARA_SIGLA = {
 # Saída
 # ---------------------------------------------------------------------------
 OUTPUT_ENCODING = "utf-8"
+EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"
