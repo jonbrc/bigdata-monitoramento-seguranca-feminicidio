@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# --- Ambientes virtuais ---
+.venv/
+venv/
+env/
+
+# --- Credenciais / variáveis de ambiente (NUNCA versionar) ---
+.env
+.env.*
+!.env.example
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Terraform (etapas futuras) ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# --- Dados ---
+# Bases brutas: grandes demais para o Git (o CSV do SIM tem ~300 MB, acima do
+# limite de 100 MB do GitHub). Devem ser baixadas e colocadas em data/raw/
+# conforme o README.
+data/raw/*
+!data/raw/.gitkeep
+
+# --- IDE / SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
