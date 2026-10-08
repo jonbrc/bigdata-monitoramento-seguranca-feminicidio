@@ -78,6 +78,21 @@ SIM_SEXO_FEMININO = "2"
 SIM_CID_AGRESSAO_INICIO = "X85"
 SIM_CID_AGRESSAO_FIM = "Y09"
 
+# Raça/cor do SIM (dicionário de dados do SIM). Ausente ou fora da lista -> "ignorada".
+SIM_RACACOR = {
+    "1": "branca",
+    "2": "preta",
+    "3": "amarela",
+    "4": "parda",
+    "5": "indigena",
+}
+SIM_RACACOR_IGNORADA = "ignorada"
+
+# Base preliminar: há óbitos só até 02/09/2025 e agosto está incompleto
+# (~metade do volume dos meses anteriores). Meses de 2025 considerados cobertos:
+SIM_ANO = 2025
+SIM_MESES_COBERTOS = list(range(1, 9))  # janeiro a agosto
+
 # ---------------------------------------------------------------------------
 # Tabela de referência — municípios com código IBGE
 # ---------------------------------------------------------------------------

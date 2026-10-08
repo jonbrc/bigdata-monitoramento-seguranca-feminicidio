@@ -36,6 +36,7 @@ A tabela de municípios é necessária porque o Sinesp identifica o município s
 │   ├── config.py                 # caminhos e parâmetros centralizados
 │   ├── extract.py                # leitura das bases (SIM em blocos)
 │   ├── padronizacao.py           # normalização de nomes e códigos IBGE
+│   ├── transform_sinesp.py       # tratamento da Base 1 (Sinesp)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
 ├── requirements.txt
 └── README.md
@@ -75,3 +76,19 @@ python -m etl.exploratory_analysis
 ```
 
 Lê as duas bases (o SIM em blocos de 200 mil linhas) e gera [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md) com o perfil de cada uma: registros, colunas, tipos, nulos, duplicidades, período, consistência dos códigos e compatibilidade das chaves de município entre as fontes. Leva cerca de 1 minuto.
+
+## Tratamento — Base 1 (Sinesp VDE)
+
+Teste isolado: `python -m etl.transform_sinesp` (imprime as contagens de cada passo).
+
+| # | Passo | Decisão e justificativa |
+|---|---|---|
+| 1 | Padronização de texto | `uf`, `municipio`, `evento` sem espaços nas pontas; `uf` e `municipio` em maiúsculas. |
+| 2 | Recorte temático | Mantém 6 eventos de violência letal e contra a mulher, registrados por município: Feminicídio, Tentativa de feminicídio, Homicídio doloso, Tentativa de homicídio, Lesão corporal seguida de morte, Latrocínio. Estupro e Estupro de vulnerável ficam de fora porque só existem agregados por UF. |
+| 3 | Município "NÃO INFORMADO" | Tratado como nulo (AI02). Como não pode ser relacionado a um município do SIM, a linha sai; as vítimas descartadas são contadas (7 no recorte). |
+| 4 | Nulos por sexo | `feminino`/`masculino`/`nao_informado` nulos viram 0: em todas as linhas `total_vitima` está preenchido e é igual à soma por sexo, então o nulo significa "nenhuma vítima nessa categoria". O script interrompe se essa regra for violada. |
+| 5 | Colunas sem uso | `agente`, `arma`, `faixa_etaria`, `total`, `total_peso` (100% nulas no recorte) e `abrangencia` (constante) saem. |
+| 6 | Duplicidades | O DF tem 33 linhas por mês/evento, todas como "BRASÍLIA" (provavelmente uma por região administrativa). São **somadas**, não descartadas, para obter o total do município. O script confere que o total de vítimas não muda. |
+| 7 | Tipos | Contagens como inteiros; `data_referencia` vira `ano` e `mes`. |
+| 8 | Código IBGE | Associado por UF + nome normalizado com `data/reference/municipios_ibge.csv`; 10 grafias divergentes resolvidas por uma lista explícita de equivalências em `etl/config.py`. O nome do município passa a ser o oficial da tabela de referência. |
+| 9 | Pivot | Uma linha por **município × mês**; para cada evento, as colunas `sinesp_<evento>_fem` (vítimas femininas) e `sinesp_<evento>_total` (todas as vítimas). |
