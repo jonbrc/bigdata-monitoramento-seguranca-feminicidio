@@ -18,11 +18,23 @@ env/
 # --- Notebooks ---
 .ipynb_checkpoints/
 
-# --- Terraform (etapas futuras) ---
+# --- Terraform ---
+# State contém senha e URI do banco em texto puro
 .terraform/
 *.tfstate
 *.tfstate.*
+crash.log
+crash.*.log
+
+# Variáveis com segredos (o terraform.tfvars.example é versionado)
 *.tfvars
+*.tfvars.json
+
+# Overrides locais
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # --- Dados ---
 # Bases brutas: grandes demais para o Git (o CSV do SIM tem ~300 MB, acima do

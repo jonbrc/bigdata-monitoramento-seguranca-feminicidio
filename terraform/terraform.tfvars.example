@@ -1,0 +1,4 @@
+# Copie para terraform.tfvars e preencha com seus valores
+aiven_api_token    = "seu-token-da-api-aiven"
+aiven_project_name = "bigdata-seguranca-publica"
+# pg_database_name = "seguranca_publica"   # opcional

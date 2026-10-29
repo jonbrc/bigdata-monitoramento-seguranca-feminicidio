@@ -1,6 +1,6 @@
 # Monitoramento de Segurança Pública e Feminicídio Interseccional
 
-Projeto prático da disciplina **Big Data & Analytics** (UCSal) — etapa AI03: unificação e tratamento dos dados.
+Projeto prático da disciplina **Big Data & Analytics** (UCSal) — etapa AI03: unificação e tratamento dos dados, com o banco PostgreSQL provisionado no Aiven via Terraform.
 
 **Grupo:** João Bruno Reis Carvalho dos Santos · Lucas Danilo Santos Araújo · Maria Fernanda Pereira Barcante Costa · Rafael Farias Castro
 
@@ -12,9 +12,9 @@ Alinhamento: ODS 5 (Igualdade de Gênero) e ODS 18 (Igualdade Étnico-Racial).
 
 ## Visão geral
 
-O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado, que na etapa seguinte será carregado no PostgreSQL (Aiven). Do **Sinesp VDE 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam apenas os óbitos de mulheres cuja causa básica foi agressão (CID-10 X85 a Y09). As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV final representa um município em um mês de 2025**, com as vítimas (mulheres e total) de cada evento do Sinesp e os óbitos femininos por agressão do SIM, no total e por raça/cor.
+O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado, que é carregado no PostgreSQL (Aiven). Do **Sinesp VDE 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam apenas os óbitos de mulheres cuja causa básica foi agressão (CID-10 X85 a Y09). As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV final representa um município em um mês de 2025**, com as vítimas (mulheres e total) de cada evento do Sinesp e os óbitos femininos por agressão do SIM, no total e por raça/cor.
 
-> Esta etapa não inclui a carga no PostgreSQL/Aiven; o CSV foi preparado para isso (ver [Próxima etapa](#próxima-etapa-postgresql--aiven)).
+A infraestrutura do banco (serviço PostgreSQL e banco do projeto no Aiven) é declarada como código em [`terraform/`](terraform/), e as credenciais nunca são versionadas (ver [Segurança](#segurança-e-gerenciamento-de-credenciais)).
 
 ## Bases de dados
 
@@ -52,8 +52,16 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── transform_sim.py          # TRANSFORMAÇÃO da Base 2
 │   ├── merge.py                  # RELACIONAMENTO Sinesp × SIM
 │   ├── validate.py               # VALIDAÇÃO do resultado
+│   ├── load.py                   # CARGA no PostgreSQL (credenciais via .env)
 │   ├── main.py                   # pipeline completo (ponto de entrada)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
+├── terraform/
+│   ├── main.tf                   # provider Aiven, serviço PostgreSQL e banco do projeto
+│   ├── variables.tf              # variáveis (token da API, projeto, nome do banco)
+│   ├── outputs.tf                # host, porta, banco e URIs de conexão (sensíveis)
+│   ├── terraform.tfvars.example  # modelo de variáveis (versionado, sem valores reais)
+│   └── .terraform.lock.hcl       # versão exata do provider (versionado)
+├── .env.example                  # modelo de credenciais do ETL (versionado, campos vazios)
 ├── requirements.txt
 └── README.md
 ```
@@ -104,6 +112,48 @@ Comandos auxiliares:
 | `python -m etl.transform_sim` | Executa só o tratamento do SIM e imprime as contagens |
 | `python -m etl.exploratory_analysis` | Regenera `docs/analise_exploratoria.md` (~1 min) |
 
+### 4. Provisionar o banco (Terraform)
+
+Requer o [Terraform](https://developer.hashicorp.com/terraform/install) instalado e um token da API do Aiven (console → ícone de usuário → **Tokens** → **Generate token**).
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # preencha o token e o nome do projeto
+terraform init
+terraform plan                                 # revise o que será criado/alterado
+terraform apply
+```
+
+O serviço do plano gratuito é desligado automaticamente após um período sem uso. Se o `apply` falhar com `the service is powered off`, ligue o serviço no console do Aiven (menu **⋯** → **Power on service**), aguarde o status **Running** e rode novamente.
+
+### 5. Configurar as credenciais do ETL
+
+Na raiz do repositório:
+
+```bash
+cp .env.example .env
+```
+
+Preencha o `.env`. Host, porta e nome do banco podem ser obtidos pelo Terraform:
+
+| Variável | Origem |
+|---|---|
+| `DB_HOST` | `terraform output -raw pg_host` |
+| `DB_PORT` | `terraform output -raw pg_port` |
+| `DB_NAME` | `terraform output -raw pg_database` |
+| `DB_USER` | usuário do serviço no Aiven (`avnadmin`) |
+| `DB_PASSWORD` | campo **Password** na página do serviço no console do Aiven |
+
+### 6. Carregar os dados no PostgreSQL
+
+Com o serviço ligado e o `.env` preenchido:
+
+```bash
+python -m etl.load
+```
+
+O script lê o CSV tratado em `data/processed/` e o carrega no banco do projeto. Se alguma variável do `.env` estiver faltando, ele para com uma mensagem indicando qual.
+
 ## Fluxo do ETL
 
 ```text
@@ -123,7 +173,9 @@ RELACIONAMENTO          └──── código IBGE 6 dígitos + ano + mês (FU
                                               │
 VALIDAÇÃO                         13 verificações (chave, nulos, totais...)
                                               │
-CARGA                  data/processed/violencia_feminicidio_municipio_mes_2025.csv
+SAÍDA                  data/processed/violencia_feminicidio_municipio_mes_2025.csv
+                                              │
+CARGA                   PostgreSQL no Aiven (etl/load.py · credenciais do .env · SSL)
 ```
 
 ## Tratamento — Base 1 (Sinesp VDE)
@@ -245,6 +297,59 @@ Arquivo: `data/processed/violencia_feminicidio_municipio_mes_2025.csv` · UTF-8 
 
 Regras de leitura: valor `0` significa "nenhum caso registrado"; valor vazio significa "sem dado" (meses não cobertos pelo SIM). Municípios × meses sem nenhuma ocorrência em nenhuma das bases não aparecem no arquivo e devem ser lidos como zero.
 
+## Infraestrutura (Terraform + Aiven)
+
+O banco é provisionado como código em `terraform/`, usando o provider oficial `aiven/aiven`, com a versão fixada em `~> 4.62` e travada no `.terraform.lock.hcl`.
+
+| Recurso | Descrição |
+|---|---|
+| `aiven_pg.postgresql` | Serviço PostgreSQL `db-seguranca-publica` (plano `free-1-1gb`, nuvem `do-nyc`) |
+| `aiven_pg_database.projeto` | Banco do projeto, `seguranca_publica` por padrão (variável `pg_database_name`) |
+
+| Output | Sensível | Uso |
+|---|---|---|
+| `pg_host` | não | host do serviço |
+| `pg_port` | não | porta do serviço |
+| `pg_database` | não | nome do banco do projeto |
+| `pg_uri` | sim | URI de conexão apontando para o `defaultdb` |
+| `pg_database_uri` | sim | URI de conexão apontando para o banco do projeto |
+
+Outputs sensíveis não aparecem no terminal; para ler: `terraform output -raw pg_database_uri`.
+
+**State:** o state do Terraform é local (`terraform/terraform.tfstate`) e não é versionado. Somente quem tem esse arquivo consegue gerenciar a infraestrutura existente; sem ele, o Terraform tentaria criar o serviço novamente.
+
+## Segurança e gerenciamento de credenciais
+
+Nenhuma credencial é versionada neste repositório. Cada parte do projeto lê seus segredos de um arquivo local ignorado pelo Git, e o repositório contém apenas modelos com os campos vazios.
+
+### ETL (Python) → `.env`
+
+O `etl/load.py` lê as credenciais do banco (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`) de um arquivo `.env` na raiz do repositório, carregado com `python-dotenv`. O modelo é o `.env.example`. Se alguma variável estiver ausente, a carga é interrompida antes de qualquer conexão.
+
+### Terraform → `terraform.tfvars` ou `TF_VAR_*`
+
+O token da API do Aiven e o nome do projeto são variáveis do Terraform, informadas de uma destas formas:
+
+- **Arquivo local:** `terraform/terraform.tfvars`, criado a partir do `terraform.tfvars.example`;
+- **Variáveis de ambiente:** `export TF_VAR_aiven_api_token="..."` e `export TF_VAR_aiven_project_name="..."`, útil em CI/CD ou para não manter o token em arquivo.
+
+A variável `aiven_api_token` é marcada como `sensitive`, e as URIs de conexão são outputs sensíveis.
+
+### O que nunca é versionado
+
+| Arquivo | Motivo |
+|---|---|
+| `.env` | credenciais do banco usadas pelo ETL |
+| `terraform/terraform.tfvars` | token da API do Aiven |
+| `terraform/*.tfstate` | o state guarda a senha e a URI do banco em texto puro |
+| `terraform/.terraform/` | plugins baixados pelo `terraform init` |
+
+São versionados apenas os modelos `.env.example` e `terraform/terraform.tfvars.example`, além do `terraform/.terraform.lock.hcl`, que não contém segredos e garante a mesma versão do provider para todo o grupo.
+
+### Conexão criptografada (SSL)
+
+O PostgreSQL no Aiven só aceita conexões com SSL. O ETL conecta com `sslmode=require`, garantindo que os dados e as credenciais trafeguem criptografados entre a aplicação e o banco.
+
 ## Limitações
 
 - **Feminicídio × óbito por agressão:** o SIM não tem a categoria feminicídio. O óbito feminino por agressão (X85–Y09) inclui feminicídios e outros homicídios de mulheres, então a comparação com o Sinesp é aproximada e só faz sentido no agregado por município, não vítima a vítima.
@@ -255,7 +360,8 @@ Regras de leitura: valor `0` significa "nenhum caso registrado"; valor vazio sig
 - **Perfil das vítimas:** com a granularidade município × mês, só raça/cor é preservada do SIM; idade, escolaridade, estado civil e local de ocorrência não estão no CSV final.
 - **Distrito Federal:** o Sinesp traz várias linhas por mês para "BRASÍLIA" (provavelmente uma por região administrativa); elas foram somadas e não é possível separá-las.
 - **Tabela de municípios:** vem de um repositório público mantido pela comunidade, não diretamente do IBGE. Alguns nomes incluem a denominação alternativa entre parênteses (ex.: "Augusto Severo (Campo Grande)").
+- **Plano gratuito do Aiven:** o serviço é desligado após um período de inatividade e precisa ser religado no console antes da carga ou de qualquer `terraform apply`.
 
-## Próxima etapa: PostgreSQL / Aiven
+## Próxima etapa
 
-O CSV já está no formato esperado pelo `COPY ... FROM ... WITH (FORMAT csv, HEADER true)` do PostgreSQL: UTF-8, cabeçalho, nulos como campo vazio e booleanos como `True`/`False`. O schema (tabelas, tipos e o modelo estrela previsto na AI02) será definido na próxima etapa a partir do dicionário de dados acima. Nenhuma credencial ou conexão foi implementada nesta etapa; quando houver, as credenciais devem ficar em `.env` (já ignorado pelo Git).
+O CSV está no formato esperado pelo `COPY ... FROM ... WITH (FORMAT csv, HEADER true)` do PostgreSQL: UTF-8, cabeçalho, nulos como campo vazio e booleanos como `True`/`False`. O próximo passo é definir o schema definitivo (tabelas, tipos e o modelo estrela previsto na AI02) a partir do dicionário de dados acima.
