@@ -83,6 +83,12 @@ def filtro_feminino_agressao(df: pd.DataFrame) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Referência — municípios IBGE
 # ---------------------------------------------------------------------------
+def ler_populacao() -> pd.DataFrame:
+    """Lê a população feminina por município e cor/raça (Censo 2022)."""
+    _verificar_arquivo(config.POPULACAO_FILE)
+    return pd.read_csv(config.POPULACAO_FILE, dtype={"codigo_ibge": str})
+
+
 def ler_municipios() -> pd.DataFrame:
     """Lê a tabela de municípios com código IBGE de 7 dígitos."""
     _verificar_arquivo(config.MUNICIPIOS_FILE)

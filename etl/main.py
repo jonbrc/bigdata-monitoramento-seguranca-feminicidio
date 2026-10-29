@@ -38,13 +38,14 @@ def main() -> int:
 
     # RELACIONAMENTO
     print("\n[3/4] Relacionando Sinesp × SIM (código IBGE 6 dígitos + ano + mês)...")
-    final, est_rel = relacionar(sinesp, sim, municipios)
+    final, est_rel = relacionar(sinesp, sim, municipios, extract.ler_populacao())
     print("Relacionamento:")
     print(f"  Registros antes do JOIN:   Sinesp {fmt(est_rel['registros_sinesp'])} | SIM {fmt(est_rel['registros_sim'])}")
     print(f"  Registros relacionados:    {fmt(est_rel['relacionados'])} (município × mês presentes nas duas bases)")
     print(f"  Sem correspondência:       {fmt(est_rel['somente_sinesp'])} só no Sinesp (sem óbito no SIM) | "
           f"{fmt(est_rel['somente_sim'])} só no SIM ({est_rel['obitos_somente_sim']} óbitos)")
     print(f"  Linhas sem ocorrência removidas: {fmt(est_rel['linhas_sem_ocorrencia_removidas'])}")
+    print(f"  Linhas sem população (Censo 2022): {fmt(est_rel['linhas_sem_populacao'])}")
 
     # VALIDAÇÃO
     print("\n[4/4] Validando...")
