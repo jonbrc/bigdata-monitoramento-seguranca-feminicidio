@@ -6,7 +6,9 @@ interrompido e o CSV não é gravado.
 
 import pandas as pd
 
-COLUNAS_ID = ["codigo_ibge", "uf", "municipio", "ano", "mes"]
+from etl.transform_sim import colunas_faixa, colunas_raca
+
+COLUNAS_ID = ["codigo_ibge", "uf", "regiao", "municipio", "ano", "mes"]
 
 
 def validar(df: pd.DataFrame, est_sinesp: dict, est_sim: dict, est_rel: dict) -> list[tuple[str, bool]]:
@@ -28,7 +30,14 @@ def validar(df: pd.DataFrame, est_sinesp: dict, est_sim: dict, est_rel: dict) ->
         ("Vítimas femininas ≤ total em cada evento do Sinesp",
          all((df[c.replace("_total", "_fem")].fillna(0) <= df[c].fillna(0)).all() for c in cols_sinesp_total)),
         ("Soma por raça/cor = total de óbitos do SIM",
-         (df[cols_sim[1:]].fillna(0).sum(axis=1) == df["sim_obitos_fem_agressao"].fillna(0)).all()),
+         (df[colunas_raca()].fillna(0).sum(axis=1) == df["sim_obitos_fem_agressao"].fillna(0)).all()),
+        ("Soma por faixa etária = total de óbitos do SIM",
+         (df[colunas_faixa()].fillna(0).sum(axis=1) == df["sim_obitos_fem_agressao"].fillna(0)).all()),
+        ("População feminina presente em todas as linhas",
+         not df[[c for c in df.columns if c.startswith("pop_fem_")]].isna().any().any()),
+        ("População total ≥ soma das populações por cor/raça",
+         (df["pop_fem_total"] >= df[["pop_fem_branca", "pop_fem_preta", "pop_fem_amarela",
+                                     "pop_fem_parda", "pop_fem_indigena"]].sum(axis=1)).all()),
         ("Total de vítimas do Sinesp preservado após o relacionamento",
          int(df[cols_sinesp_total].fillna(0).sum().sum()) == est_sinesp["vitimas_total"]),
         ("Total de óbitos do SIM preservado após o relacionamento",

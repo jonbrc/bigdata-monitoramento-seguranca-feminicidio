@@ -12,7 +12,7 @@ Alinhamento: ODS 5 (Igualdade de Gênero) e ODS 18 (Igualdade Étnico-Racial).
 
 ## Visão geral
 
-O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado, que na etapa seguinte será carregado no PostgreSQL (Aiven). Do **Sinesp VDE 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam apenas os óbitos de mulheres cuja causa básica foi agressão (CID-10 X85 a Y09). As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV final representa um município em um mês de 2025**, com as vítimas (mulheres e total) de cada evento do Sinesp e os óbitos femininos por agressão do SIM, no total e por raça/cor.
+O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado, que na etapa seguinte será carregado no PostgreSQL (Aiven). Do **Sinesp VDE 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam apenas os óbitos de mulheres cuja causa básica foi agressão (CID-10 X85 a Y09). As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV final representa um município em um mês de 2025**, com a região, as vítimas (mulheres e total) de cada evento do Sinesp, os óbitos femininos por agressão do SIM (no total, por raça/cor e por faixa etária) e a população feminina do município segundo o Censo 2022 (total e por raça/cor), que serve de denominador para taxas.
 
 > Esta etapa não inclui a carga no PostgreSQL/Aiven; o CSV foi preparado para isso (ver [Próxima etapa](#próxima-etapa-postgresql--aiven)).
 
@@ -22,13 +22,16 @@ O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado
 |---|---|---|---|---|---|
 | **Sinesp VDE 2025** | Ministério da Justiça e Segurança Pública (portal de dados abertos) | `.xlsx` (~26 MB), aba `2025` | jan–dez/2025, mensal | UF × município × mês × evento | 832.293 |
 | **SIM 2025 – preliminar** | Ministério da Saúde (OpenDataSUS), atualizado em 31/08/2026 | `.csv`, separador `;`, latin-1 (~300 MB) | 01/01 a 02/09/2025 | uma linha por declaração de óbito | 937.033 |
+| **Censo Demográfico 2022** (referência) | IBGE, tabela SIDRA 9606 | API SIDRA → `.csv` UTF-8 | 2022 | um município por linha (mulheres, por cor/raça) | 5.570 |
 | **Municípios IBGE** (referência) | [kelvins/municipios-brasileiros](https://github.com/kelvins/municipios-brasileiros) (`csv/municipios.csv`) | `.csv` UTF-8 | — | um município por linha | 5.571 |
 
 **Principais campos utilizados**
 
 - **Sinesp:** `uf`, `municipio`, `evento`, `data_referencia`, `feminino`, `masculino`, `nao_informado`, `total_vitima`, `abrangencia`.
 - **SIM:** `DTOBITO`, `SEXO`, `CAUSABAS`, `CODMUNRES`, `RACACOR` (usados no resultado), além dos demais campos mapeados na AI02 (`CODMUNOCOR`, `IDADE`, `ESTCIV`, `ESC2010`, `LOCOCOR`, `CODESTAB`, `NATURAL`, `CODMUNNATU`, `TIPOBITO`), mantidos durante o tratamento.
-- **Referência:** `codigo_ibge`, `nome`, `codigo_uf` — necessária porque o Sinesp não tem código IBGE.
+- **SIM, idade:** `IDADE` é decodificado para anos e agrupado em faixas etárias.
+- **Municípios:** `codigo_ibge`, `nome`, `codigo_uf` — necessária porque o Sinesp não tem código IBGE.
+- **Censo 2022:** população residente feminina por município, total e por cor/raça (branca, preta, amarela, parda, indígena). É o dado oficial mais recente com esse detalhamento por município; as estimativas anuais do IBGE trazem só o total.
 
 O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistências) está em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md).
 
@@ -39,7 +42,8 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 ├── data/
 │   ├── raw/                      # bases brutas (fora do Git)
 │   ├── reference/
-│   │   └── municipios_ibge.csv   # tabela de municípios (versionada)
+│   │   ├── municipios_ibge.csv                # tabela de municípios (versionada)
+│   │   └── populacao_feminina_censo2022.csv   # população feminina (versionada)
 │   └── processed/
 │       └── violencia_feminicidio_municipio_mes_2025.csv   # saída do ETL (versionada)
 ├── docs/
@@ -53,6 +57,7 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── merge.py                  # RELACIONAMENTO Sinesp × SIM
 │   ├── validate.py               # VALIDAÇÃO do resultado
 │   ├── main.py                   # pipeline completo (ponto de entrada)
+│   ├── baixar_populacao.py       # regenera a tabela de população (API SIDRA/IBGE)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
 ├── requirements.txt
 └── README.md
@@ -103,6 +108,7 @@ Comandos auxiliares:
 | `python -m etl.transform_sinesp` | Executa só o tratamento do Sinesp e imprime as contagens |
 | `python -m etl.transform_sim` | Executa só o tratamento do SIM e imprime as contagens |
 | `python -m etl.exploratory_analysis` | Regenera `docs/analise_exploratoria.md` (~1 min) |
+| `python -m etl.baixar_populacao` | Baixa de novo a população feminina do Censo 2022 (API SIDRA/IBGE) e regrava `data/reference/populacao_feminina_censo2022.csv`. Só é necessário para atualizar o arquivo, que já está versionado. |
 
 ## Fluxo do ETL
 
@@ -114,14 +120,15 @@ TRANSFORMAÇÃO    recorte de eventos                    duplicidades
                  nulos por sexo → 0                    datas → ano/mês
                  soma de linhas repetidas              período coberto
                  tipos, ano/mês                        município de residência ignorado
-                 código IBGE (UF + nome)               raça/cor
+                 código IBGE (UF + nome)               raça/cor · faixa etária
                  pivot → município × mês               agregação → município × mês
                         │                                     │
 RELACIONAMENTO          └──── código IBGE 6 dígitos + ano + mês (FULL OUTER JOIN) ────┘
                                               │
                          cobertura do SIM · remoção de linhas sem ocorrência
+                         região (UF) · população feminina (Censo 2022, por código IBGE)
                                               │
-VALIDAÇÃO                         13 verificações (chave, nulos, totais...)
+VALIDAÇÃO                         16 verificações (chave, nulos, totais...)
                                               │
 CARGA                  data/processed/violencia_feminicidio_municipio_mes_2025.csv
 ```
@@ -154,8 +161,9 @@ Teste isolado: `python -m etl.transform_sim` (imprime as contagens de cada passo
 | 4 | Datas | `DTOBITO` (`ddmmaaaa`) vira data e depois `ano` e `mes`; datas inválidas sairiam (nenhuma). |
 | 5 | Período coberto | Base preliminar: óbitos só até 02/09/2025, agosto incompleto. Meses considerados cobertos: janeiro a agosto (`SIM_MESES_COBERTOS` em `etl/config.py`). |
 | 6 | Município de residência | `CODMUNRES` é a chave de relacionamento (AI02). Códigos terminados em `0000` indicam município ignorado (só a UF é conhecida) e saem, pois não podem ser ligados a um município (6 óbitos). |
-| 7 | Raça/cor | Código convertido em categoria (branca, preta, amarela, parda, indígena); nulo vira "ignorada". |
-| 8 | Agregação | Uma linha por município × mês: `sim_obitos_fem_agressao` (total) e `sim_obitos_fem_<raça>`. O script confere que o total de óbitos não muda. |
+| 7 | Raça/cor | Código convertido em categoria (branca, preta, amarela, parda, indígena); nulo vira `raca_ignorada` (13 óbitos). |
+| 8 | Idade | `IDADE` tem 3 dígitos: o 1º é a unidade (0 minutos, 1 horas, 2 dias, 3 meses, 4 anos, 5 = 100 anos ou mais) e os 2 últimos, a quantidade. Menos de 1 ano vira 0; `999` vira `idade_ignorada` (4 óbitos). Faixas: 0–17 (menores de idade), 18–29, 30–39, 40–49, 50–59, 60+ (pessoas idosas), configuráveis em `etl/config.py`. |
+| 9 | Agregação | Uma linha por município × mês: `sim_obitos_fem_agressao` (total), `sim_obitos_fem_<raça>` e `sim_obitos_fem_idade_<faixa>`. O script confere que o total de óbitos não muda e que as somas por raça e por faixa batem com o total. |
 
 ## Relacionamento (Sinesp × SIM)
 
@@ -171,6 +179,7 @@ SIM.CODMUNRES (6 díg.) + SIM.DTOBITO ──► ano + mes                       
 - **Por quê:** o SIM não registra "feminicídio" e não há identificador comum de vítima entre as bases; o óbito feminino por agressão é usado como aproximação e o cruzamento é feito por município e mês (AI02).
 - **Período:** nos meses cobertos pelo SIM (jan–ago/2025), município sem óbito recebe 0; nos meses sem cobertura (set–dez), as colunas do SIM ficam vazias (NULL) e `sim_periodo_coberto = False`.
 - **Linhas sem ocorrência:** município × mês em que todas as contagens das duas bases são zero é removido (AI02, otimização de volume).
+- **Enriquecimento:** a região é derivada da UF; a população feminina do Censo 2022 é associada pelo código IBGE de 7 dígitos (`LEFT JOIN`; todas as linhas encontram população).
 
 ## Validação
 
@@ -183,7 +192,8 @@ Antes de gravar o CSV, `etl/validate.py` verifica:
 - não há contagens negativas;
 - as colunas do SIM não têm nulos nos meses cobertos e são nulas nos meses não cobertos;
 - em cada evento do Sinesp, vítimas femininas ≤ total de vítimas;
-- a soma por raça/cor é igual ao total de óbitos do SIM;
+- a soma por raça/cor e a soma por faixa etária são iguais ao total de óbitos do SIM;
+- todas as linhas têm população, e a população total é ≥ a soma por cor/raça (o total inclui cor/raça ignorada);
 - o total de vítimas do Sinesp e o total de óbitos do SIM são os mesmos antes e depois do relacionamento.
 
 Além disso, cada etapa de transformação confere que as agregações não alteraram os totais.
@@ -205,9 +215,9 @@ Execução com as bases descritas acima:
 | Relacionamento — registros presentes nas duas bases | 1.494 |
 | Relacionamento — só no Sinesp (sem óbito no SIM) / só no SIM | 65.346 / 0 |
 | Linhas sem nenhuma ocorrência removidas | 45.483 |
-| **CSV final** | **21.357 linhas · 25 colunas · 4.490 municípios** |
+| **CSV final** | **21.357 linhas · 39 colunas · 4.490 municípios** |
 
-Totais no CSV final: 1.566 vítimas de feminicídio (Sinesp, jan–dez) e 1.836 óbitos femininos por agressão (SIM, jan–ago), sendo 1.087 de mulheres pardas, 556 brancas, 145 pretas, 34 indígenas, 1 amarela e 13 com raça/cor ignorada.
+Totais no CSV final: 1.566 vítimas de feminicídio (Sinesp, jan–dez) e 1.836 óbitos femininos por agressão (SIM, jan–ago), sendo 1.087 de mulheres pardas, 556 brancas, 145 pretas, 34 indígenas, 1 amarela e 13 com raça/cor ignorada. Por faixa etária: 160 (0–17), 591 (18–29), 486 (30–39), 319 (40–49), 152 (50–59), 124 (60+) e 4 com idade ignorada.
 
 ## Dicionário de dados — CSV final
 
@@ -219,6 +229,7 @@ Arquivo: `data/processed/violencia_feminicidio_municipio_mes_2025.csv` · UTF-8 
 |---|---|---|---|
 | `codigo_ibge` | texto (7 dígitos) | Referência IBGE | Código IBGE do município |
 | `uf` | texto (2) | Sinesp | Sigla da UF |
+| `regiao` | texto | ETL (a partir da UF) | Região geográfica: Norte, Nordeste, Sudeste, Sul, Centro-Oeste |
 | `municipio` | texto | Referência IBGE | Nome oficial do município |
 | `ano` | inteiro | Sinesp / SIM | Ano de referência (2025) |
 | `mes` | inteiro (1–12) | Sinesp / SIM | Mês de referência |
@@ -241,9 +252,33 @@ Arquivo: `data/processed/violencia_feminicidio_municipio_mes_2025.csv` · UTF-8 
 | `sim_obitos_fem_amarela` | inteiro (nulo fora do período) | SIM | Idem, raça/cor amarela |
 | `sim_obitos_fem_parda` | inteiro (nulo fora do período) | SIM | Idem, raça/cor parda |
 | `sim_obitos_fem_indigena` | inteiro (nulo fora do período) | SIM | Idem, raça/cor indígena |
-| `sim_obitos_fem_ignorada` | inteiro (nulo fora do período) | SIM | Idem, raça/cor não informada |
+| `sim_obitos_fem_raca_ignorada` | inteiro (nulo fora do período) | SIM | Idem, raça/cor não informada |
+| `sim_obitos_fem_idade_0_17` | inteiro (nulo fora do período) | SIM | Idem, 0 a 17 anos |
+| `sim_obitos_fem_idade_18_29` | inteiro (nulo fora do período) | SIM | Idem, 18 a 29 anos |
+| `sim_obitos_fem_idade_30_39` | inteiro (nulo fora do período) | SIM | Idem, 30 a 39 anos |
+| `sim_obitos_fem_idade_40_49` | inteiro (nulo fora do período) | SIM | Idem, 40 a 49 anos |
+| `sim_obitos_fem_idade_50_59` | inteiro (nulo fora do período) | SIM | Idem, 50 a 59 anos |
+| `sim_obitos_fem_idade_60_mais` | inteiro (nulo fora do período) | SIM | Idem, 60 anos ou mais |
+| `sim_obitos_fem_idade_ignorada` | inteiro (nulo fora do período) | SIM | Idem, idade não informada |
+| `pop_fem_total` | inteiro | Censo 2022 | População feminina residente no município (inclui cor/raça ignorada) |
+| `pop_fem_branca` | inteiro | Censo 2022 | População feminina branca |
+| `pop_fem_preta` | inteiro | Censo 2022 | População feminina preta |
+| `pop_fem_amarela` | inteiro | Censo 2022 | População feminina amarela |
+| `pop_fem_parda` | inteiro | Censo 2022 | População feminina parda |
+| `pop_fem_indigena` | inteiro | Censo 2022 | População feminina indígena |
 
 Regras de leitura: valor `0` significa "nenhum caso registrado"; valor vazio significa "sem dado" (meses não cobertos pelo SIM). Municípios × meses sem nenhuma ocorrência em nenhuma das bases não aparecem no arquivo e devem ser lidos como zero.
+
+## Uso da população (taxas)
+
+As colunas `pop_fem_*` são atributos do **município**: o mesmo valor se repete em todas as linhas (meses) dele. Duas regras para calcular taxas corretamente:
+
+1. **Nunca somar a população linha a linha.** Somar `pop_fem_total` de 12 meses multiplica a população por 12. Agregue primeiro um valor por município (máximo ou valor distinto) e só depois some.
+2. **Para Brasil, região ou UF, use o denominador completo.** O CSV não traz os 1.080 municípios sem nenhuma ocorrência no ano (2,7% das mulheres), porque essas linhas foram removidas. Para taxas agregadas, use `data/reference/populacao_feminina_censo2022.csv` como tabela de dimensão (relacionada por `codigo_ibge`), que tem todos os 5.570 municípios.
+
+Fórmula: `taxa por 100 mil = casos / população feminina × 100.000`. Para comparar Sinesp e SIM, restrinja aos meses com `sim_periodo_coberto = True`.
+
+Exemplos com os dados atuais (jan–ago/2025, SIM, denominador completo): 1,20 óbito por agressão por 100 mil mulheres brancas, 2,16 por 100 mil mulheres negras (pretas + pardas) e 5,51 por 100 mil mulheres indígenas. Feminicídios (Sinesp, ano): 1,50 por 100 mil mulheres.
 
 ## Limitações
 
@@ -252,8 +287,10 @@ Regras de leitura: valor `0` significa "nenhum caso registrado"; valor vazio sig
 - **Residência × ocorrência:** o SIM é relacionado pelo município de **residência** (AI02), enquanto o Sinesp registra o local da ocorrência. Em 21,3% dos óbitos do recorte os dois municípios são diferentes.
 - **Registros descartados por falta de município:** 7 vítimas do Sinesp (município "NÃO INFORMADO") e 6 óbitos do SIM (município de residência ignorado).
 - **Eventos sem detalhe municipal:** Estupro e Estupro de vulnerável existem no Sinesp só por UF e não entram no cruzamento.
-- **Perfil das vítimas:** com a granularidade município × mês, só raça/cor é preservada do SIM; idade, escolaridade, estado civil e local de ocorrência não estão no CSV final.
+- **Perfil das vítimas:** com a granularidade município × mês, raça/cor e faixa etária são preservadas do SIM; escolaridade, estado civil e local de ocorrência não estão no CSV final.
 - **Distrito Federal:** o Sinesp traz várias linhas por mês para "BRASÍLIA" (provavelmente uma por região administrativa); elas foram somadas e não é possível separá-las.
+- **População de 2022 para casos de 2025:** o Censo 2022 é o dado mais recente com sexo e cor/raça por município; usar 2022 como denominador de 2025 pode subestimar levemente a população (e superestimar as taxas) em municípios que cresceram. Taxas por faixa etária não são possíveis com o arquivo atual, que traz só a população total por cor/raça.
+- **Municípios pequenos:** com 0, 1 ou 2 casos, taxas e razões oscilam muito; prefira conclusões por UF ou região.
 - **Tabela de municípios:** vem de um repositório público mantido pela comunidade, não diretamente do IBGE. Alguns nomes incluem a denominação alternativa entre parênteses (ex.: "Augusto Severo (Campo Grande)").
 
 ## Próxima etapa: PostgreSQL / Aiven

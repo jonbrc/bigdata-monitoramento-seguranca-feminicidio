@@ -3,7 +3,7 @@
 Entrada: CSV bruto (uma linha por declaração de óbito), lido em blocos e já
          filtrado durante a leitura (mulheres, causa básica X85–Y09).
 Saída:   uma linha por município de residência × mês, com o número de óbitos
-         femininos por agressão, no total e por raça/cor.
+         femininos por agressão, no total, por raça/cor e por faixa etária.
 
 Teste isolado (na raiz do repositório):
     python -m etl.transform_sim
@@ -12,7 +12,7 @@ Teste isolado (na raiz do repositório):
 import pandas as pd
 
 from etl import config, extract
-from etl.padronizacao import codigo_ibge_6
+from etl.padronizacao import codigo_ibge_6, idade_em_anos
 
 CHAVE = ["codigo_ibge_6", "ano", "mes"]
 
@@ -20,6 +20,29 @@ CHAVE = ["codigo_ibge_6", "ano", "mes"]
 def colunas_raca() -> list[str]:
     categorias = list(config.SIM_RACACOR.values()) + [config.SIM_RACACOR_IGNORADA]
     return [f"sim_obitos_fem_{c}" for c in categorias]
+
+
+def colunas_faixa() -> list[str]:
+    categorias = [f for _, _, f in config.SIM_FAIXAS_ETARIAS] + [config.SIM_FAIXA_IGNORADA]
+    return [f"sim_obitos_fem_{c}" for c in categorias]
+
+
+def classificar_faixa(anos: pd.Series) -> pd.Series:
+    """Idade em anos -> sufixo da faixa etária (config.SIM_FAIXAS_ETARIAS)."""
+    faixa = pd.Series(config.SIM_FAIXA_IGNORADA, index=anos.index, dtype="object")
+    for minimo, maximo, nome in config.SIM_FAIXAS_ETARIAS:
+        dentro = anos.ge(minimo) & (anos.le(maximo) if maximo is not None else True)
+        faixa[dentro.fillna(False).astype(bool)] = nome
+    return faixa
+
+
+def _contar(df: pd.DataFrame, coluna: str, categorias: list[str]) -> pd.DataFrame:
+    """Conta óbitos por município × mês para cada categoria de `coluna`."""
+    t = (df.pivot_table(index=CHAVE, columns=coluna, values="DTOBITO",
+                        aggfunc="count", fill_value=0)
+         .reindex(columns=categorias, fill_value=0))
+    t.columns = [f"sim_obitos_fem_{c}" for c in t.columns]
+    return t.astype("int64")
 
 
 def tratar_sim(df: pd.DataFrame, total_lido: int, municipios: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -74,26 +97,33 @@ def tratar_sim(df: pd.DataFrame, total_lido: int, municipios: pd.DataFrame) -> t
     df = df[~ignorado & ~fora_tabela].rename(columns={"CODMUNRES": "codigo_ibge_6"})
     est["registros_tratados"] = len(df)
 
-    # 6. Raça/cor: código -> categoria; ausente ou não previsto -> "ignorada"
+    # 6. Raça/cor: código -> categoria; ausente ou não previsto -> "raca_ignorada"
     est["racacor_nulo_ou_ignorado"] = int((~df["RACACOR"].isin(config.SIM_RACACOR)).sum())
     df["raca_cor"] = df["RACACOR"].map(config.SIM_RACACOR).fillna(config.SIM_RACACOR_IGNORADA)
 
-    # 7. Agregação: um registro por município × mês (total e por raça/cor)
-    por_raca = (df.pivot_table(index=CHAVE, columns="raca_cor", values="DTOBITO",
-                               aggfunc="count", fill_value=0)
-                .reindex(columns=list(config.SIM_RACACOR.values()) + [config.SIM_RACACOR_IGNORADA],
-                         fill_value=0))
-    por_raca.columns = [f"sim_obitos_fem_{c}" for c in por_raca.columns]
-    agregado = por_raca.astype("int64")
-    agregado.insert(0, "sim_obitos_fem_agressao", agregado.sum(axis=1))
+    # 7. Idade: campo IDADE decodificado (unidade + quantidade) e classificado em faixas;
+    #    "999" ou inválido -> faixa "idade_ignorada"
+    df["faixa_etaria"] = classificar_faixa(idade_em_anos(df["IDADE"]))
+    est["idade_ignorada"] = int((df["faixa_etaria"] == config.SIM_FAIXA_IGNORADA).sum())
+
+    # 8. Agregação: um registro por município × mês (total, por raça/cor e por faixa etária)
+    por_raca = _contar(df, "raca_cor",
+                       list(config.SIM_RACACOR.values()) + [config.SIM_RACACOR_IGNORADA])
+    por_faixa = _contar(df, "faixa_etaria",
+                        [f for _, _, f in config.SIM_FAIXAS_ETARIAS] + [config.SIM_FAIXA_IGNORADA])
+    agregado = por_raca.join(por_faixa, how="outer").fillna(0).astype("int64")
+    agregado.insert(0, "sim_obitos_fem_agressao", agregado[colunas_raca()].sum(axis=1))
     agregado = agregado.reset_index()
 
     assert int(agregado["sim_obitos_fem_agressao"].sum()) == len(df), "agregação alterou o total de óbitos"
+    assert (agregado[colunas_faixa()].sum(axis=1) == agregado["sim_obitos_fem_agressao"]).all(), \
+        "soma das faixas etárias difere do total"
     assert not agregado.duplicated(CHAVE).any()
 
     est["registros_agregados"] = len(agregado)
     est["municipios_com_obito"] = agregado["codigo_ibge_6"].nunique()
     est["obitos_por_raca"] = {c.removeprefix("sim_obitos_fem_"): int(agregado[c].sum()) for c in colunas_raca()}
+    est["obitos_por_faixa"] = {c.removeprefix("sim_obitos_fem_"): int(agregado[c].sum()) for c in colunas_faixa()}
     return agregado, est
 
 
@@ -107,7 +137,7 @@ def resumo(est: dict) -> str:
     return "\n".join([
         "Base 2 — SIM:",
         f"  Registros originais:                     {est['registros_originais']:>9,}",
-        f"  Após recorte (mulheres, X85–Y09):        {est['registros_recorte_tematico']:>9,}",
+        f"  Após recorte (mulheres e X85–Y09):       {est['registros_recorte_tematico']:>9,}",
         f"  Duplicados removidos:                    {est['duplicados_removidos']:>9,}",
         f"  Datas inválidas removidas:               {est['datas_invalidas_removidas']:>9,}",
         f"  Fora do período coberto removidos:       {est['fora_periodo_coberto_removidos']:>9,}",
@@ -115,10 +145,13 @@ def resumo(est: dict) -> str:
         f"  Município fora da tabela IBGE:           {est['municipio_fora_tabela_ibge']:>9,}",
         f"  Registros após tratamento (óbitos):      {est['registros_tratados']:>9,}",
         f"  Raça/cor nula ou ignorada:               {est['racacor_nulo_ou_ignorado']:>9,}",
+        f"  Idade ignorada:                          {est['idade_ignorada']:>9,}",
         f"  Agregado (município × mês):              {est['registros_agregados']:>9,}",
         f"  Municípios com ao menos um óbito:        {est['municipios_com_obito']:>9,}",
     ]).replace(",", ".") + "\n  Óbitos por raça/cor: " + "; ".join(
-        f"{raca}={n}" for raca, n in est["obitos_por_raca"].items())
+        f"{raca}={n}" for raca, n in est["obitos_por_raca"].items()) + \
+        "\n  Óbitos por faixa etária: " + "; ".join(
+        f"{faixa}={n}" for faixa, n in est["obitos_por_faixa"].items())
 
 
 if __name__ == "__main__":

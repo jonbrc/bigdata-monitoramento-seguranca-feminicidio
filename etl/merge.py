@@ -14,13 +14,13 @@ import pandas as pd
 
 from etl import config
 from etl.padronizacao import codigo_ibge_6
-from etl.transform_sim import colunas_raca
+from etl.transform_sim import colunas_faixa, colunas_raca
 
 CHAVE = ["codigo_ibge_6", "ano", "mes"]
 
 
-def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame,
-               municipios: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame, municipios: pd.DataFrame,
+               populacao: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     est = {"registros_sinesp": len(sinesp), "registros_sim": len(sim)}
     sinesp = sinesp.copy()
     sinesp["codigo_ibge_6"] = sinesp["codigo_ibge"].map(codigo_ibge_6)
@@ -46,7 +46,7 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame,
     # Cobertura do SIM (base preliminar): nos meses cobertos, ausência de óbito = 0;
     # nos meses não cobertos, as colunas do SIM ficam nulas (sem dado).
     df["sim_periodo_coberto"] = (df["ano"] == config.SIM_ANO) & df["mes"].isin(config.SIM_MESES_COBERTOS)
-    cols_sim = ["sim_obitos_fem_agressao"] + colunas_raca()
+    cols_sim = ["sim_obitos_fem_agressao"] + colunas_raca() + colunas_faixa()
     for c in cols_sim:
         df[c] = df[c].astype("Int64")
         df.loc[df["sim_periodo_coberto"] & df[c].isna(), c] = 0
@@ -62,9 +62,19 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame,
     est["linhas_sem_ocorrencia_removidas"] = int((soma == 0).sum())
     df = df[soma > 0]
 
+    # Região geográfica derivada da UF
+    df["regiao"] = df["uf"].map(config.UF_PARA_REGIAO)
+
+    # População feminina (Censo 2022) por código IBGE de 7 dígitos. É um atributo do
+    # município e se repete em todos os meses dele (ver README, "Uso da população").
+    cols_pop = [c for c in populacao.columns if c.startswith("pop_fem_")]
+    df = df.merge(populacao, on="codigo_ibge", how="left")
+    est["linhas_sem_populacao"] = int(df["pop_fem_total"].isna().sum())
+    df[cols_pop] = df[cols_pop].astype("Int64")
+
     # Colunas auxiliares saem; ordem final
-    colunas = (["codigo_ibge", "uf", "municipio", "ano", "mes"] + cols_sinesp
-               + ["sim_periodo_coberto"] + cols_sim)
+    colunas = (["codigo_ibge", "uf", "regiao", "municipio", "ano", "mes"] + cols_sinesp
+               + ["sim_periodo_coberto"] + cols_sim + cols_pop)
     df = (df[colunas]
           .astype({"ano": "int16", "mes": "int16"})
           .sort_values(["uf", "municipio", "ano", "mes"], ignore_index=True))

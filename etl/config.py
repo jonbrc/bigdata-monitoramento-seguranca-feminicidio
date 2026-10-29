@@ -78,7 +78,7 @@ SIM_SEXO_FEMININO = "2"
 SIM_CID_AGRESSAO_INICIO = "X85"
 SIM_CID_AGRESSAO_FIM = "Y09"
 
-# Raça/cor do SIM (dicionário de dados do SIM). Ausente ou fora da lista -> "ignorada".
+# Raça/cor do SIM (dicionário de dados do SIM). Ausente ou fora da lista -> "raca_ignorada".
 SIM_RACACOR = {
     "1": "branca",
     "2": "preta",
@@ -86,7 +86,19 @@ SIM_RACACOR = {
     "4": "parda",
     "5": "indigena",
 }
-SIM_RACACOR_IGNORADA = "ignorada"
+SIM_RACACOR_IGNORADA = "raca_ignorada"
+
+# Faixas etárias para as contagens do SIM: (idade mínima, idade máxima ou None, sufixo).
+# 0–17 = menores de idade (ECA); 60+ = pessoas idosas (Estatuto da Pessoa Idosa).
+SIM_FAIXAS_ETARIAS = [
+    (0, 17, "idade_0_17"),
+    (18, 29, "idade_18_29"),
+    (30, 39, "idade_30_39"),
+    (40, 49, "idade_40_49"),
+    (50, 59, "idade_50_59"),
+    (60, None, "idade_60_mais"),
+]
+SIM_FAIXA_IGNORADA = "idade_ignorada"
 
 # Base preliminar: há óbitos só até 02/09/2025 e agosto está incompleto
 # (~metade do volume dos meses anteriores). Meses de 2025 considerados cobertos:
@@ -110,6 +122,41 @@ UF_CODIGO_PARA_SIGLA = {
     31: "MG", 32: "ES", 33: "RJ", 35: "SP",
     41: "PR", 42: "SC", 43: "RS",
     50: "MS", 51: "MT", 52: "GO", 53: "DF",
+}
+
+# Região geográfica de cada UF
+UF_PARA_REGIAO = {
+    "AC": "Norte", "AM": "Norte", "AP": "Norte", "PA": "Norte", "RO": "Norte",
+    "RR": "Norte", "TO": "Norte",
+    "AL": "Nordeste", "BA": "Nordeste", "CE": "Nordeste", "MA": "Nordeste",
+    "PB": "Nordeste", "PE": "Nordeste", "PI": "Nordeste", "RN": "Nordeste",
+    "SE": "Nordeste",
+    "ES": "Sudeste", "MG": "Sudeste", "RJ": "Sudeste", "SP": "Sudeste",
+    "PR": "Sul", "RS": "Sul", "SC": "Sul",
+    "DF": "Centro-Oeste", "GO": "Centro-Oeste", "MS": "Centro-Oeste", "MT": "Centro-Oeste",
+}
+
+# ---------------------------------------------------------------------------
+# Tabela de referência — população feminina (IBGE, Censo Demográfico 2022)
+# ---------------------------------------------------------------------------
+# Tabela SIDRA 9606 (população residente por cor ou raça, sexo e idade), sexo =
+# Mulheres, idade = Total, todas as categorias de cor ou raça, nível município.
+# Gerada por `python -m etl.baixar_populacao`. É o dado oficial mais recente com
+# população por sexo e cor/raça no nível municipal (as estimativas anuais do IBGE
+# não têm esse detalhamento).
+POPULACAO_FILE = REFERENCE_DIR / "populacao_feminina_censo2022.csv"
+POPULACAO_SIDRA_URL = (
+    "https://apisidra.ibge.gov.br/values/t/9606/n6/all/v/93/p/2022"
+    "/c2/5/c86/all/c287/100362/f/c/h/n"
+)
+# Código SIDRA da categoria de cor ou raça -> sufixo da coluna
+POPULACAO_SIDRA_CORES = {
+    "95251": "total",   # inclui cor/raça ignorada
+    "2776": "branca",
+    "2777": "preta",
+    "2778": "amarela",
+    "2779": "parda",
+    "2780": "indigena",
 }
 
 # ---------------------------------------------------------------------------
