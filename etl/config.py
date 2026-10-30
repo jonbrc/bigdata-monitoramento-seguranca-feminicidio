@@ -166,3 +166,14 @@ OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes_2025.csv"
 OUTPUT_SEPARATOR = ","
 OUTPUT_ENCODING = "utf-8"
 EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"
+
+# ---------------------------------------------------------------------------
+# Carga no PostgreSQL (Aiven) — `python -m etl.load`
+# ---------------------------------------------------------------------------
+# As credenciais NÃO ficam aqui: vêm de variáveis de ambiente, lidas do arquivo
+# .env na raiz (ignorado pelo Git). Modelo: .env.example.
+SCHEMA_SQL_FILE = ROOT_DIR / "sql" / "schema.sql"
+DB_SCHEMA = "dw"
+ENV_FILE = ROOT_DIR / ".env"
+DB_ENV_OBRIGATORIAS = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+DB_SSLMODE_PADRAO = "require"  # o Aiven só aceita conexões com SSL

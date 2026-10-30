@@ -1,6 +1,6 @@
 # Monitoramento de Segurança Pública e Feminicídio Interseccional
 
-Projeto prático da disciplina **Big Data & Analytics** (UCSal) — etapa AI03: unificação e tratamento dos dados, com o banco PostgreSQL provisionado no Aiven via Terraform.
+Projeto prático da disciplina **Big Data & Analytics** (UCSal) — etapa AI04 (continuação da AI03): tratamento dos dados, modelagem e carga no banco PostgreSQL provisionado no Aiven via Terraform.
 
 **Grupo:** João Bruno Reis Carvalho dos Santos · Lucas Danilo Santos Araújo · Maria Fernanda Pereira Barcante Costa · Rafael Farias Castro
 
@@ -55,10 +55,12 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── transform_sim.py          # TRANSFORMAÇÃO da Base 2
 │   ├── merge.py                  # RELACIONAMENTO Sinesp × SIM
 │   ├── validate.py               # VALIDAÇÃO do resultado
-│   ├── load.py                   # CARGA no PostgreSQL (credenciais via .env)
+│   ├── load.py                   # CARGA no PostgreSQL: CSV → modelo estrela (credenciais via .env)
 │   ├── main.py                   # pipeline completo (ponto de entrada)
 │   ├── baixar_populacao.py       # regenera a tabela de população (API SIDRA/IBGE)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
+├── sql/
+│   └── schema.sql                # modelo estrela do banco: tabelas, dimensões fixas e views
 ├── terraform/
 │   ├── main.tf                   # provider Aiven, serviço PostgreSQL e banco do projeto
 │   ├── variables.tf              # variáveis (token da API, projeto, nome do banco)
@@ -157,7 +159,22 @@ Com o serviço ligado e o `.env` preenchido:
 python -m etl.load
 ```
 
-O script lê o CSV tratado em `data/processed/` e o carrega no banco do projeto. Se alguma variável do `.env` estiver faltando, ele para com uma mensagem indicando qual.
+O script:
+
+1. lê o CSV tratado em `data/processed/` e as tabelas de referência (municípios e população);
+2. converte o formato largo do CSV para o modelo estrela (ver [Modelagem do banco](#modelagem-do-banco)) e confere que nenhum total se perdeu (vítimas, óbitos e população);
+3. recria o schema `dw` a partir de [`sql/schema.sql`](sql/schema.sql) e carrega as tabelas com `COPY`;
+4. confere no banco os totais carregados.
+
+Tudo acontece em **uma única transação**: se qualquer passo falhar, nada é gravado. A carga pode ser repetida quantas vezes for preciso, pois o schema é recriado do zero. Se alguma variável do `.env` estiver faltando, o script para antes de conectar, com uma mensagem indicando qual.
+
+Para montar e conferir as tabelas **sem conectar ao banco** (útil para testar o ETL sem o serviço ligado):
+
+```bash
+python -m etl.load --dry-run
+```
+
+Resultado esperado: `dim_municipio` 5.571 · `dim_tempo` 12 · `fato_ocorrencia_sinesp` 31.292 · `fato_obito_sim_raca` 1.601 · `fato_obito_sim_faixa` 1.716 · `fato_populacao` 33.420 linhas.
 
 ## Fluxo do ETL
 
@@ -181,7 +198,8 @@ VALIDAÇÃO                         16 verificações (chave, nulos, totais...)
                                               │
 SAÍDA                  data/processed/violencia_feminicidio_municipio_mes_2025.csv
                                               │
-CARGA                   PostgreSQL no Aiven (etl/load.py · credenciais do .env · SSL)
+CARGA                   formato largo → modelo estrela (etl/load.py)
+                        PostgreSQL no Aiven, schema dw (sql/schema.sql · credenciais do .env · SSL)
 ```
 
 ## Tratamento — Base 1 (Sinesp VDE)
@@ -320,7 +338,153 @@ Arquivo: `data/processed/violencia_feminicidio_municipio_mes_2025.csv` · UTF-8 
 
 Regras de leitura: valor `0` significa "nenhum caso registrado"; valor vazio significa "sem dado" (meses não cobertos pelo SIM). Municípios × meses sem nenhuma ocorrência em nenhuma das bases não aparecem no arquivo e devem ser lidos como zero.
 
-<<<<<<< HEAD
+## Modelagem do banco
+
+Banco relacional **PostgreSQL** (Aiven), schema `dw`, em **modelo estrela** com a hierarquia geográfica normalizada (município → UF). Definição completa, com tipos, chaves e restrições, em [`sql/schema.sql`](sql/schema.sql).
+
+### Diagrama
+
+```mermaid
+erDiagram
+    dim_uf ||--o{ dim_municipio : "contém"
+    dim_municipio ||--o{ fato_ocorrencia_sinesp : ""
+    dim_municipio ||--o{ fato_obito_sim_raca : ""
+    dim_municipio ||--o{ fato_obito_sim_faixa : ""
+    dim_municipio ||--o{ fato_populacao : ""
+    dim_tempo ||--o{ fato_ocorrencia_sinesp : ""
+    dim_tempo ||--o{ fato_obito_sim_raca : ""
+    dim_tempo ||--o{ fato_obito_sim_faixa : ""
+    dim_evento ||--o{ fato_ocorrencia_sinesp : ""
+    dim_raca_cor ||--o{ fato_obito_sim_raca : ""
+    dim_raca_cor ||--o{ fato_populacao : ""
+    dim_faixa_etaria ||--o{ fato_obito_sim_faixa : ""
+
+    dim_uf {
+        char sigla_uf PK
+        smallint codigo_uf
+        varchar nome_uf
+        varchar regiao
+    }
+    dim_municipio {
+        char codigo_ibge PK
+        char codigo_ibge_6
+        varchar nome
+        char sigla_uf FK
+        boolean capital
+        numeric latitude
+        numeric longitude
+    }
+    dim_tempo {
+        int id_tempo PK
+        smallint ano
+        smallint mes
+        boolean sim_periodo_coberto
+    }
+    dim_evento {
+        smallint id_evento PK
+        varchar codigo
+        varchar tipo
+        boolean violencia_genero
+    }
+    dim_raca_cor {
+        smallint id_raca_cor PK
+        varchar codigo
+        varchar grupo
+    }
+    dim_faixa_etaria {
+        smallint id_faixa_etaria PK
+        varchar codigo
+        smallint idade_min
+        smallint idade_max
+    }
+    fato_ocorrencia_sinesp {
+        char codigo_ibge PK
+        int id_tempo PK
+        smallint id_evento PK
+        int vitimas_fem
+        int vitimas_total
+    }
+    fato_obito_sim_raca {
+        char codigo_ibge PK
+        int id_tempo PK
+        smallint id_raca_cor PK
+        int obitos
+    }
+    fato_obito_sim_faixa {
+        char codigo_ibge PK
+        int id_tempo PK
+        smallint id_faixa_etaria PK
+        int obitos
+    }
+    fato_populacao {
+        char codigo_ibge PK
+        smallint id_raca_cor PK
+        smallint ano_censo PK
+        int pop_fem
+    }
+```
+
+### Estrutura
+
+| Tabela | Tipo | Granularidade / conteúdo | Origem | Linhas |
+|---|---|---|---|---|
+| `fato_ocorrencia_sinesp` | fato | município × mês × evento: vítimas femininas e total | colunas `sinesp_<evento>_fem/_total` do CSV | 31.292 |
+| `fato_obito_sim_raca` | fato | município × mês × raça/cor: óbitos femininos por agressão | colunas `sim_obitos_fem_<raça>` | 1.601 |
+| `fato_obito_sim_faixa` | fato | município × mês × faixa etária: os mesmos óbitos | colunas `sim_obitos_fem_idade_<faixa>` | 1.716 |
+| `fato_populacao` | fato | município × raça/cor: população feminina (Censo 2022) | `populacao_feminina_censo2022.csv` | 33.420 |
+| `dim_municipio` | dimensão | município, com código IBGE de 7 e 6 dígitos, capital e coordenadas | `municipios_ibge.csv` | 5.571 |
+| `dim_uf` | dimensão | UF e região | fixa no `schema.sql` | 27 |
+| `dim_tempo` | dimensão | mês, trimestre, semestre e cobertura do SIM | `etl/load.py` | 12 |
+| `dim_evento` | dimensão | evento do Sinesp, tipo (consumado/tentativa) e se é violência de gênero | fixa no `schema.sql` | 6 |
+| `dim_raca_cor` | dimensão | raça/cor (códigos do IBGE) e grupo (Negra = preta + parda) | fixa no `schema.sql` | 6 |
+| `dim_faixa_etaria` | dimensão | faixa etária, com idade mínima e máxima | fixa no `schema.sql` | 7 |
+
+O schema carregado ocupa cerca de **12 MB**, bem abaixo do limite de 1 GB do plano gratuito do Aiven.
+
+### Estratégia de organização dos dados
+
+- **Do CSV largo para o formato longo.** O CSV tem uma coluna por evento, raça/cor e faixa etária (39 colunas). No banco, essas colunas viram linhas nas tabelas fato, ligadas às dimensões. Assim cada filtro do dashboard (região/UF/município, mês, evento, raça/cor, faixa etária) vira um `WHERE` ou `GROUP BY`, sem escolher colunas, e um novo evento ou categoria entra como linha nova, sem alterar a estrutura.
+- **Raça/cor e faixa etária em fatos separados.** O CSV traz as duas contagens do SIM separadas (não cruzadas), então elas ficam em `fato_obito_sim_raca` e `fato_obito_sim_faixa`. Cada uma soma o total de óbitos; não é possível filtrar por raça **e** faixa ao mesmo tempo com os dados atuais.
+- **Fatos esparsos.** Só são gravadas combinações com pelo menos um caso; ausência de linha = 0. Exceção: nos meses fora da cobertura do SIM (`dim_tempo.sim_periodo_coberto = false`), ausência de linha nos fatos do SIM significa "sem dado", e não zero.
+- **População como fato próprio, com todos os municípios.** Resolve as duas regras de [Uso da população](#uso-da-população-taxas): a população não se repete por mês (não há risco de somá-la 12 vezes) e o denominador inclui os municípios sem ocorrência. Raça "ignorada" = total − soma das cinco categorias, então a soma por município é a população total.
+- **Integridade no banco.** Chaves primárias compostas nos fatos, chaves estrangeiras para todas as dimensões e `CHECK`s (contagens não negativas, vítimas femininas ≤ total, código IBGE com 7 dígitos, mês entre 1 e 12) garantem a veracidade dos dados mesmo fora do ETL.
+- **Nenhum dado pessoal.** O menor nível de detalhe é município × mês (LGPD).
+
+### Views para o dashboard
+
+| View | Conteúdo |
+|---|---|
+| `vw_sinesp` | vítimas do Sinesp com região, UF, município, mês e evento já resolvidos |
+| `vw_sim_raca` / `vw_sim_faixa` | óbitos do SIM por raça/cor ou por faixa etária, com os atributos de filtro |
+| `vw_obitos_populacao_raca` | óbitos e população feminina por UF × raça/cor (jan–ago), base das taxas por 100 mil |
+| `vw_comparativo_sinesp_sim` | por município: feminicídios registrados pela polícia × óbitos femininos por agressão (jan–ago) |
+
+Para qualquer taxa, some numerador e denominador no recorte desejado e só então divida: `SUM(obitos) * 100000 / SUM(pop_fem)`. Exemplo (taxa por grupo racial, Brasil):
+
+```sql
+SELECT grupo_racial,
+       SUM(obitos)                                 AS obitos,
+       ROUND(SUM(obitos) * 100000.0 / SUM(pop_fem), 2) AS taxa_100mil
+FROM dw.vw_obitos_populacao_raca
+WHERE grupo_racial <> 'Ignorada'
+GROUP BY grupo_racial
+ORDER BY taxa_100mil DESC;
+-- Indígena 5,51 · Negra 2,16 · Branca 1,20 · Amarela 0,22
+```
+
+## Decisões técnicas
+
+| Decisão | Alternativas consideradas | Justificativa |
+|---|---|---|
+| **Banco relacional (PostgreSQL)** | banco não relacional (ex.: OpenSearch, MongoDB) | Os dados são estruturados e tabulares (contagens por município, mês e categoria), com relacionamentos fixos entre fatos e dimensões. O relacional garante integridade com chaves e `CHECK`s e responde bem às agregações do dashboard (`GROUP BY`, `JOIN`). Não há texto livre nem documentos semiestruturados que justifiquem um banco não relacional. |
+| **Aiven, plano gratuito** | outros provedores de nuvem | Plataforma indicada pela disciplina; PostgreSQL gerenciado sem custo e com provider oficial para Terraform. O limite de 1 GB é suficiente (o schema ocupa ~12 MB). |
+| **Terraform (IaC)** | criar o serviço manualmente no console | A infraestrutura fica versionada e reproduzível; qualquer integrante recria o serviço com `terraform apply`. |
+| **Modelo estrela** | uma tabela única igual ao CSV; modelo totalmente normalizado | A tabela única repetiria a população em todos os meses e exigiria escolher colunas para cada filtro. O modelo totalmente normalizado aumentaria os `JOIN`s sem ganho para consultas analíticas. A estrela é o padrão para leitura analítica e encaixa nos filtros do dashboard. |
+| **Hierarquia município → UF normalizada** | região e UF repetidas em cada município | Permite o drill-down Região → UF → Município com uma única fonte para nome e região de cada UF. |
+| **Fatos separados por raça/cor e por faixa etária** | um fato cruzado raça × faixa | O CSV tratado traz as duas contagens separadas; o cruzamento exigiria mudar o ETL. |
+| **Carga com `COPY` em transação única, recriando o schema** | `INSERT` linha a linha; carga incremental | `COPY` é a forma mais rápida de carga no PostgreSQL; a transação única evita banco carregado pela metade; recriar o schema torna a carga repetível. O volume (~70 mil linhas) não justifica carga incremental. |
+| **psycopg 3 + python-dotenv** | SQLAlchemy | Driver oficial e leve, com suporte direto a `COPY`; o `python-dotenv` lê as credenciais do `.env` sem colocá-las no código. |
+
 ## Infraestrutura (Terraform + Aiven)
 
 O banco é provisionado como código em `terraform/`, usando o provider oficial `aiven/aiven`, com a versão fixada em `~> 4.62` e travada no `.terraform.lock.hcl`.
@@ -373,7 +537,7 @@ São versionados apenas os modelos `.env.example` e `terraform/terraform.tfvars.
 ### Conexão criptografada (SSL)
 
 O PostgreSQL no Aiven só aceita conexões com SSL. O ETL conecta com `sslmode=require`, garantindo que os dados e as credenciais trafeguem criptografados entre a aplicação e o banco.
-=======
+
 ## Uso da população (taxas)
 
 As colunas `pop_fem_*` são atributos do **município**: o mesmo valor se repete em todas as linhas (meses) dele. Duas regras para calcular taxas corretamente:
@@ -381,10 +545,11 @@ As colunas `pop_fem_*` são atributos do **município**: o mesmo valor se repete
 1. **Nunca somar a população linha a linha.** Somar `pop_fem_total` de 12 meses multiplica a população por 12. Agregue primeiro um valor por município (máximo ou valor distinto) e só depois some.
 2. **Para Brasil, região ou UF, use o denominador completo.** O CSV não traz os 1.080 municípios sem nenhuma ocorrência no ano (2,7% das mulheres), porque essas linhas foram removidas. Para taxas agregadas, use `data/reference/populacao_feminina_censo2022.csv` como tabela de dimensão (relacionada por `codigo_ibge`), que tem todos os 5.570 municípios.
 
+No banco, essas duas regras já estão resolvidas: a população fica em `fato_populacao` (uma linha por município × raça/cor, sem repetir por mês) e inclui todos os 5.570 municípios. As regras acima valem para quem usar o CSV diretamente.
+
 Fórmula: `taxa por 100 mil = casos / população feminina × 100.000`. Para comparar Sinesp e SIM, restrinja aos meses com `sim_periodo_coberto = True`.
 
 Exemplos com os dados atuais (jan–ago/2025, SIM, denominador completo): 1,20 óbito por agressão por 100 mil mulheres brancas, 2,16 por 100 mil mulheres negras (pretas + pardas) e 5,51 por 100 mil mulheres indígenas. Feminicídios (Sinesp, ano): 1,50 por 100 mil mulheres.
->>>>>>> ac4295f4f60623a7423ad522efdfde977a97b10e
 
 ## Limitações
 
@@ -399,7 +564,3 @@ Exemplos com os dados atuais (jan–ago/2025, SIM, denominador completo): 1,20 �
 - **Municípios pequenos:** com 0, 1 ou 2 casos, taxas e razões oscilam muito; prefira conclusões por UF ou região.
 - **Tabela de municípios:** vem de um repositório público mantido pela comunidade, não diretamente do IBGE. Alguns nomes incluem a denominação alternativa entre parênteses (ex.: "Augusto Severo (Campo Grande)").
 - **Plano gratuito do Aiven:** o serviço é desligado após um período de inatividade e precisa ser religado no console antes da carga ou de qualquer `terraform apply`.
-
-## Próxima etapa
-
-O CSV está no formato esperado pelo `COPY ... FROM ... WITH (FORMAT csv, HEADER true)` do PostgreSQL: UTF-8, cabeçalho, nulos como campo vazio e booleanos como `True`/`False`. O próximo passo é definir o schema definitivo (tabelas, tipos e o modelo estrela previsto na AI02) a partir do dicionário de dados acima.
