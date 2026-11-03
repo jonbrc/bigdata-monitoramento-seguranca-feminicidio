@@ -136,28 +136,32 @@ UF_PARA_REGIAO = {
     "DF": "Centro-Oeste", "GO": "Centro-Oeste", "MS": "Centro-Oeste", "MT": "Centro-Oeste",
 }
 
-# ---------------------------------------------------------------------------
-# Tabela de referência — população feminina (IBGE, Censo Demográfico 2022)
-# ---------------------------------------------------------------------------
-# Tabela SIDRA 9606 (população residente por cor ou raça, sexo e idade), sexo =
-# Mulheres, idade = Total, todas as categorias de cor ou raça, nível município.
-# Gerada por `python -m etl.baixar_populacao`. É o dado oficial mais recente com
-# população por sexo e cor/raça no nível municipal (as estimativas anuais do IBGE
-# não têm esse detalhamento).
-POPULACAO_FILE = REFERENCE_DIR / "populacao_feminina_censo2022.csv"
-POPULACAO_SIDRA_URL = (
-    "https://apisidra.ibge.gov.br/values/t/9606/n6/all/v/93/p/2022"
-    "/c2/5/c86/all/c287/100362/f/c/h/n"
+POPULACAO_FILE = REFERENCE_DIR / "populacao_censo2022.csv"
+POPULACAO_API_URL = (
+    "https://servicodados.ibge.gov.br/api/v3/agregados/9606/periodos/2022/variaveis/93"
+    "?localidades=N6[N3[{uf}]]&classificacao=2[{sexos}]|86[all]|287[{idades}]"
 )
-# Código SIDRA da categoria de cor ou raça -> sufixo da coluna
-POPULACAO_SIDRA_CORES = {
-    "95251": "total",   # inclui cor/raça ignorada
+POPULACAO_API_SEXOS = {"4": "masculino", "5": "feminino"}
+POPULACAO_API_CORES = {
+    "95251": "total",
     "2776": "branca",
     "2777": "preta",
     "2778": "amarela",
     "2779": "parda",
     "2780": "indigena",
 }
+POPULACAO_API_IDADES = {
+    "93070": "idade_0_17", "93084": "idade_0_17", "93085": "idade_0_17",
+    "6572": "idade_0_17", "6573": "idade_0_17", "6574": "idade_0_17",
+    "6575": "idade_18_29", "6576": "idade_18_29", "93087": "idade_18_29", "93088": "idade_18_29",
+    "93089": "idade_30_39", "93090": "idade_30_39",
+    "93091": "idade_40_49", "93092": "idade_40_49",
+    "93093": "idade_50_59", "93094": "idade_50_59",
+    "93095": "idade_60_mais", "93096": "idade_60_mais", "93097": "idade_60_mais",
+    "93098": "idade_60_mais", "49108": "idade_60_mais", "49109": "idade_60_mais",
+    "60040": "idade_60_mais", "60041": "idade_60_mais", "6653": "idade_60_mais",
+}
+POPULACAO_API_UFS_GRANDES = {31, 35}
 
 # ---------------------------------------------------------------------------
 # Saída

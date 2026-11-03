@@ -143,7 +143,7 @@ CREATE TABLE fato_obito_sim_faixa (
 CREATE INDEX ix_fato_sim_faixa_tempo ON fato_obito_sim_faixa (id_tempo);
 
 -- Censo 2022: população feminina por município × raça/cor (denominador das taxas).
--- Carregada de data/reference/populacao_feminina_censo2022.csv, com TODOS os
+-- Carregada de data/reference/populacao_censo2022.csv, com TODOS os
 -- 5.570 municípios (o CSV tratado não tem os municípios sem ocorrência), para que
 -- taxas por UF/região/Brasil usem o denominador completo. Raça "ignorada" =
 -- pop_fem_total − soma das cinco categorias, então SUM(pop_fem) por município =

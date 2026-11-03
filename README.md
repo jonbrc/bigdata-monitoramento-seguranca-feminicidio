@@ -21,7 +21,7 @@ A infraestrutura do banco (serviço PostgreSQL e banco do projeto no Aiven) é d
 |---|---|---|---|---|---|
 | **Sinesp VDE 2025** | Ministério da Justiça e Segurança Pública (portal de dados abertos) | `.xlsx` (~26 MB), aba `2025` | jan–dez/2025, mensal | UF × município × mês × evento | 832.293 |
 | **SIM 2025 – preliminar** | Ministério da Saúde (OpenDataSUS), atualizado em 31/08/2026 | `.csv`, separador `;`, latin-1 (~300 MB) | 01/01 a 02/09/2025 | uma linha por declaração de óbito | 937.033 |
-| **Censo Demográfico 2022** (referência) | IBGE, tabela SIDRA 9606 | API SIDRA → `.csv` UTF-8 | 2022 | um município por linha (mulheres, por cor/raça) | 5.570 |
+| **Censo Demográfico 2022** (referência) | IBGE, tabela 9606 | API de agregados do IBGE (JSON) → `.csv` UTF-8 | 2022 | município × sexo × faixa etária (população por cor/raça em colunas) | 66.840 |
 | **Municípios IBGE** (referência) | [kelvins/municipios-brasileiros](https://github.com/kelvins/municipios-brasileiros) (`csv/municipios.csv`) | `.csv` UTF-8 | — | um município por linha | 5.571 |
 
 **Principais campos utilizados**
@@ -30,7 +30,7 @@ A infraestrutura do banco (serviço PostgreSQL e banco do projeto no Aiven) é d
 - **SIM:** `DTOBITO`, `SEXO`, `CAUSABAS`, `CODMUNRES`, `RACACOR` (usados no resultado), além dos demais campos mapeados na AI02 (`CODMUNOCOR`, `IDADE`, `ESTCIV`, `ESC2010`, `LOCOCOR`, `CODESTAB`, `NATURAL`, `CODMUNNATU`, `TIPOBITO`), mantidos durante o tratamento.
 - **SIM, idade:** `IDADE` é decodificado para anos e agrupado em faixas etárias.
 - **Municípios:** `codigo_ibge`, `nome`, `codigo_uf` — necessária porque o Sinesp não tem código IBGE.
-- **Censo 2022:** população residente feminina por município, total e por cor/raça (branca, preta, amarela, parda, indígena). É o dado oficial mais recente com esse detalhamento por município; as estimativas anuais do IBGE trazem só o total.
+- **Censo 2022:** população residente por município, sexo e faixa etária, total e por cor/raça (branca, preta, amarela, parda, indígena). As faixas são as mesmas usadas no SIM (0–17, 18–29, 30–39, 40–49, 50–59, 60+). É o dado oficial mais recente com esse detalhamento por município; as estimativas anuais do IBGE trazem só o total.
 
 O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistências) está em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md).
 
@@ -42,7 +42,7 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── raw/                      # bases brutas (fora do Git)
 │   ├── reference/
 │   │   ├── municipios_ibge.csv                # tabela de municípios (versionada)
-│   │   └── populacao_feminina_censo2022.csv   # população feminina (versionada)
+│   │   └── populacao_censo2022.csv            # população por sexo, faixa etária e cor/raça (versionada)
 │   └── processed/
 │       └── violencia_feminicidio_municipio_mes_2025.csv   # saída do ETL (versionada)
 ├── docs/
@@ -57,7 +57,7 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── validate.py               # VALIDAÇÃO do resultado
 │   ├── load.py                   # CARGA no PostgreSQL: CSV → modelo estrela (credenciais via .env)
 │   ├── main.py                   # pipeline completo (ponto de entrada)
-│   ├── baixar_populacao.py       # regenera a tabela de população (API SIDRA/IBGE)
+│   ├── baixar_populacao.py       # regenera a tabela de população (API do IBGE)
 │   └── exploratory_analysis.py   # análise exploratória das bases brutas
 ├── sql/
 │   └── schema.sql                # modelo estrela do banco: tabelas, dimensões fixas e views
@@ -117,7 +117,7 @@ Comandos auxiliares:
 | `python -m etl.transform_sinesp` | Executa só o tratamento do Sinesp e imprime as contagens |
 | `python -m etl.transform_sim` | Executa só o tratamento do SIM e imprime as contagens |
 | `python -m etl.exploratory_analysis` | Regenera `docs/analise_exploratoria.md` (~1 min) |
-| `python -m etl.baixar_populacao` | Baixa de novo a população feminina do Censo 2022 (API SIDRA/IBGE) e regrava `data/reference/populacao_feminina_censo2022.csv`. Só é necessário para atualizar o arquivo, que já está versionado. |
+| `python -m etl.baixar_populacao` | Baixa de novo a população do Censo 2022 por sexo, faixa etária e cor/raça (API de agregados do IBGE) e regrava `data/reference/populacao_censo2022.csv`. Só é necessário para atualizar o arquivo, que já está versionado. |
 
 ### 4. Provisionar o banco (Terraform)
 
@@ -431,7 +431,7 @@ erDiagram
 | `fato_ocorrencia_sinesp` | fato | município × mês × evento: vítimas femininas e total | colunas `sinesp_<evento>_fem/_total` do CSV | 31.292 |
 | `fato_obito_sim_raca` | fato | município × mês × raça/cor: óbitos femininos por agressão | colunas `sim_obitos_fem_<raça>` | 1.601 |
 | `fato_obito_sim_faixa` | fato | município × mês × faixa etária: os mesmos óbitos | colunas `sim_obitos_fem_idade_<faixa>` | 1.716 |
-| `fato_populacao` | fato | município × raça/cor: população feminina (Censo 2022) | `populacao_feminina_censo2022.csv` | 33.420 |
+| `fato_populacao` | fato | município × raça/cor: população feminina (Censo 2022) | `populacao_censo2022.csv` (sexo feminino) | 33.420 |
 | `dim_municipio` | dimensão | município, com código IBGE de 7 e 6 dígitos, capital e coordenadas | `municipios_ibge.csv` | 5.571 |
 | `dim_uf` | dimensão | UF e região | fixa no `schema.sql` | 27 |
 | `dim_tempo` | dimensão | mês, trimestre, semestre e cobertura do SIM | `etl/load.py` | 12 |
@@ -543,7 +543,7 @@ O PostgreSQL no Aiven só aceita conexões com SSL. O ETL conecta com `sslmode=r
 As colunas `pop_fem_*` são atributos do **município**: o mesmo valor se repete em todas as linhas (meses) dele. Duas regras para calcular taxas corretamente:
 
 1. **Nunca somar a população linha a linha.** Somar `pop_fem_total` de 12 meses multiplica a população por 12. Agregue primeiro um valor por município (máximo ou valor distinto) e só depois some.
-2. **Para Brasil, região ou UF, use o denominador completo.** O CSV não traz os 1.080 municípios sem nenhuma ocorrência no ano (2,7% das mulheres), porque essas linhas foram removidas. Para taxas agregadas, use `data/reference/populacao_feminina_censo2022.csv` como tabela de dimensão (relacionada por `codigo_ibge`), que tem todos os 5.570 municípios.
+2. **Para Brasil, região ou UF, use o denominador completo.** O CSV não traz os 1.080 municípios sem nenhuma ocorrência no ano (2,7% das mulheres), porque essas linhas foram removidas. Para taxas agregadas, use `data/reference/populacao_censo2022.csv` (linhas com `sexo = feminino`, somadas por município) como tabela de dimensão (relacionada por `codigo_ibge`), que tem todos os 5.570 municípios.
 
 No banco, essas duas regras já estão resolvidas: a população fica em `fato_populacao` (uma linha por município × raça/cor, sem repetir por mês) e inclui todos os 5.570 municípios. As regras acima valem para quem usar o CSV diretamente.
 

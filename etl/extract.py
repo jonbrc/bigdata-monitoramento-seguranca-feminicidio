@@ -83,10 +83,16 @@ def filtro_feminino_agressao(df: pd.DataFrame) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Referência — municípios IBGE
 # ---------------------------------------------------------------------------
-def ler_populacao() -> pd.DataFrame:
-    """Lê a população feminina por município e cor/raça (Censo 2022)."""
+def ler_populacao_detalhada() -> pd.DataFrame:
     _verificar_arquivo(config.POPULACAO_FILE)
     return pd.read_csv(config.POPULACAO_FILE, dtype={"codigo_ibge": str})
+
+
+def ler_populacao() -> pd.DataFrame:
+    pop = ler_populacao_detalhada()
+    cols = [c for c in pop.columns if c.startswith("pop_")]
+    fem = pop[pop["sexo"] == "feminino"].groupby("codigo_ibge", as_index=False)[cols].sum()
+    return fem.rename(columns={c: c.replace("pop_", "pop_fem_") for c in cols})
 
 
 def ler_municipios() -> pd.DataFrame:

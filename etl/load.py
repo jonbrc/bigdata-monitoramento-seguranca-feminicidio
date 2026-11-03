@@ -3,7 +3,7 @@
 Entrada:
     data/processed/violencia_feminicidio_municipio_mes_2025.csv  (gerado por `python -m etl.main`)
     data/reference/municipios_ibge.csv                           (dim_municipio)
-    data/reference/populacao_feminina_censo2022.csv              (fato_populacao)
+    data/reference/populacao_censo2022.csv              (fato_populacao)
 
 O CSV tem formato largo (uma linha por município × mês, uma coluna por evento,
 raça/cor e faixa etária). Na carga, essas colunas viram linhas nas tabelas fato
