@@ -21,8 +21,10 @@ DOCS_DIR = ROOT_DIR / "docs"
 # ---------------------------------------------------------------------------
 # Base 1 — Sinesp VDE 2025 (MJSP)
 # ---------------------------------------------------------------------------
-SINESP_FILE = RAW_DIR / "BancoVDE 2025 (1).xlsx"
-SINESP_SHEET = "2025"
+SINESP_ARQUIVOS = {
+    2024: RAW_DIR / "BancoVDE 2024.xlsx",
+    2025: RAW_DIR / "BancoVDE 2025 (1).xlsx",
+}
 # O motor "calamine" lê o .xlsx ~7x mais rápido que o openpyxl (≈15 s vs ≈110 s).
 SINESP_EXCEL_ENGINE = "calamine"
 
@@ -59,7 +61,10 @@ SINESP_MUNICIPIOS_EQUIVALENCIAS = {
 # ---------------------------------------------------------------------------
 # Base 2 — SIM 2025 preliminar (Ministério da Saúde)
 # ---------------------------------------------------------------------------
-SIM_FILE = RAW_DIR / "Mortalidade_Geral_2025.csv"
+SIM_ARQUIVOS = {
+    2024: RAW_DIR / "Mortalidade_Geral_2024.csv",
+    2025: RAW_DIR / "Mortalidade_Geral_2025.csv",
+}
 SIM_SEPARATOR = ";"
 SIM_ENCODING = "latin-1"
 SIM_CHUNKSIZE = 200_000  # leitura em blocos (Pandas chunking)
@@ -102,8 +107,11 @@ SIM_FAIXA_IGNORADA = "idade_ignorada"
 
 # Base preliminar: há óbitos só até 02/09/2025 e agosto está incompleto
 # (~metade do volume dos meses anteriores). Meses de 2025 considerados cobertos:
-SIM_ANO = 2025
-SIM_MESES_COBERTOS = list(range(1, 9))  # janeiro a agosto
+SIM_MESES_COBERTOS = {
+    2024: list(range(1, 13)),
+    2025: list(range(1, 9)),
+}
+ANOS = sorted(SINESP_ARQUIVOS)
 
 # ---------------------------------------------------------------------------
 # Tabela de referência — municípios com código IBGE
@@ -166,7 +174,7 @@ POPULACAO_API_UFS_GRANDES = {31, 35}
 # ---------------------------------------------------------------------------
 # Saída
 # ---------------------------------------------------------------------------
-OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes_2025.csv"
+OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes.csv"
 OUTPUT_SEPARATOR = ","
 OUTPUT_ENCODING = "utf-8"
 EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"

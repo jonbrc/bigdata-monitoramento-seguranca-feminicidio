@@ -1,7 +1,7 @@
 """CARGA — CSV tratado → PostgreSQL (Aiven), no modelo estrela de sql/schema.sql.
 
 Entrada:
-    data/processed/violencia_feminicidio_municipio_mes_2025.csv  (gerado por `python -m etl.main`)
+    data/processed/violencia_feminicidio_municipio_mes.csv  (gerado por `python -m etl.main`)
     data/reference/municipios_ibge.csv                           (dim_municipio)
     data/reference/populacao_censo2022.csv              (fato_populacao)
 
@@ -114,13 +114,13 @@ def montar_tabelas(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     })
 
     # dim_tempo — os 12 meses do ano de referência
-    t = pd.DataFrame({"ano": config.SIM_ANO, "mes": range(1, 13)})
+    t = pd.DataFrame([(a, m) for a in config.ANOS for m in range(1, 13)], columns=["ano", "mes"])
     t["id_tempo"] = t["ano"] * 100 + t["mes"]
     t["nome_mes"] = t["mes"].map(lambda m: MESES[m - 1])
     t["trimestre"] = (t["mes"] - 1) // 3 + 1
     t["semestre"] = (t["mes"] - 1) // 6 + 1
     t["data_inicio"] = pd.to_datetime(dict(year=t["ano"], month=t["mes"], day=1)).dt.date
-    t["sim_periodo_coberto"] = t["mes"].isin(config.SIM_MESES_COBERTOS)
+    t["sim_periodo_coberto"] = [m in config.SIM_MESES_COBERTOS.get(a, []) for a, m in zip(t["ano"], t["mes"])]
     tabelas["dim_tempo"] = t
 
     # fato_ocorrencia_sinesp — sinesp_<evento>_fem / _total → uma linha por evento

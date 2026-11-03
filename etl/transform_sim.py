@@ -53,8 +53,8 @@ def tratar_sim(df: pd.DataFrame, total_lido: int, municipios: pd.DataFrame) -> t
     # 1. Duplicidades. `contador` é único por linha, mas é só um número sequencial do
     #    arquivo. Linhas idênticas em todas as demais colunas seriam a mesma declaração
     #    repetida e são removidas (no arquivo atual não há nenhuma dentro do recorte).
-    colunas_sem_contador = [c for c in df.columns if c != "contador"]
-    duplicadas = df.duplicated(colunas_sem_contador)
+    colunas_sem_contador = [c for c in df.columns if c not in ("contador", "arquivo_ano")]
+    duplicadas = df.duplicated(colunas_sem_contador + ["arquivo_ano"])
     est["duplicados_removidos"] = int(duplicadas.sum())
     df = df[~duplicadas]
 
@@ -82,7 +82,11 @@ def tratar_sim(df: pd.DataFrame, total_lido: int, municipios: pd.DataFrame) -> t
     df["mes"] = data[data.notna()].dt.month.astype("int16")
 
     # Óbitos fora do período considerado coberto (não deve haver; se houver, são contados)
-    fora_periodo = (df["ano"] != config.SIM_ANO) | (~df["mes"].isin(config.SIM_MESES_COBERTOS))
+    coberto = pd.Series(
+        [m in config.SIM_MESES_COBERTOS.get(a, []) for a, m in zip(df["ano"], df["mes"])],
+        index=df.index,
+    )
+    fora_periodo = ~coberto
     est["fora_periodo_coberto_removidos"] = int(fora_periodo.sum())
     df = df[~fora_periodo]
 
@@ -128,9 +132,12 @@ def tratar_sim(df: pd.DataFrame, total_lido: int, municipios: pd.DataFrame) -> t
 
 
 def ler_e_tratar_sim(municipios: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Extração com filtro durante a leitura + tratamento."""
-    bruto, total = extract.ler_sim_filtrado(extract.filtro_feminino_agressao)
-    return tratar_sim(bruto, total, municipios)
+    partes, total = [], 0
+    for ano in config.ANOS:
+        bruto, lidos = extract.ler_sim_filtrado(ano, extract.filtro_feminino_agressao)
+        partes.append(bruto.assign(arquivo_ano=ano))
+        total += lidos
+    return tratar_sim(pd.concat(partes, ignore_index=True), total, municipios)
 
 
 def resumo(est: dict) -> str:

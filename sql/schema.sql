@@ -3,14 +3,14 @@
 -- Schema do banco (PostgreSQL / Aiven) — modelo estrela, com a hierarquia
 -- geográfica normalizada (município → UF)
 --
--- Origem dos dados: data/processed/violencia_feminicidio_municipio_mes_2025.csv
+-- Origem dos dados: data/processed/violencia_feminicidio_municipio_mes.csv
 -- (formato largo, uma linha por município × mês) e data/reference/*.csv.
 -- Na carga, as colunas do CSV viram linhas (formato longo) nas tabelas fato.
 --
 -- Granularidades:
---   fato_ocorrencia_sinesp  município × mês × evento    (Sinesp VDE 2025)
---   fato_obito_sim_raca     município × mês × raça/cor  (SIM 2025)
---   fato_obito_sim_faixa    município × mês × faixa     (SIM 2025)
+--   fato_ocorrencia_sinesp  município × mês × evento    (Sinesp VDE 2024–2025)
+--   fato_obito_sim_raca     município × mês × raça/cor  (SIM 2024–2025)
+--   fato_obito_sim_faixa    município × mês × faixa     (SIM 2024–2025)
 --   fato_populacao          município × raça/cor        (Censo 2022)
 --
 -- Raça/cor e faixa etária do SIM ficam em fatos separados porque o CSV tratado
@@ -67,7 +67,7 @@ CREATE TABLE dim_tempo (
     trimestre            SMALLINT    NOT NULL CHECK (trimestre BETWEEN 1 AND 4),
     semestre             SMALLINT    NOT NULL CHECK (semestre IN (1, 2)),
     data_inicio          DATE        NOT NULL,
-    sim_periodo_coberto  BOOLEAN     NOT NULL,          -- CSV: sim_periodo_coberto (jan–ago/2025)
+    sim_periodo_coberto  BOOLEAN     NOT NULL,          -- CSV: sim_periodo_coberto (2024 inteiro; jan–ago/2025)
     UNIQUE (ano, mes),
     CHECK (id_tempo = ano * 100 + mes)
 );
@@ -243,8 +243,8 @@ JOIN dim_uf           u  USING (sigla_uf)
 JOIN dim_tempo        t  USING (id_tempo)
 JOIN dim_faixa_etaria fe USING (id_faixa_etaria);
 
--- Óbitos e população feminina por UF × raça/cor, no período coberto pelo SIM
--- (jan–ago/2025). Base das taxas por raça: para qualquer recorte (Brasil, região,
+-- Óbitos e população feminina por ano × UF × raça/cor, no período coberto pelo SIM
+-- (2024 inteiro; jan–ago/2025). Base das taxas por raça: para qualquer recorte (Brasil, região,
 -- UF, grupo racial), some `obitos` e `pop_fem` e calcule
 -- SUM(obitos) * 100000 / SUM(pop_fem). Nunca faça média de taxas.
 -- Denominador completo: inclui os municípios sem nenhum óbito.
@@ -255,12 +255,16 @@ WITH pop AS (
     SELECT m.sigla_uf, p.id_raca_cor, SUM(p.pop_fem) AS pop_fem
     FROM fato_populacao p JOIN dim_municipio m USING (codigo_ibge)
     GROUP BY m.sigla_uf, p.id_raca_cor
+), anos AS (
+    SELECT DISTINCT ano FROM dim_tempo WHERE sim_periodo_coberto
 ), obitos AS (
-    SELECT m.sigla_uf, f.id_raca_cor, SUM(f.obitos) AS obitos
-    FROM fato_obito_sim_raca f JOIN dim_municipio m USING (codigo_ibge)
-    GROUP BY m.sigla_uf, f.id_raca_cor
+    SELECT t.ano, m.sigla_uf, f.id_raca_cor, SUM(f.obitos) AS obitos
+    FROM fato_obito_sim_raca f
+    JOIN dim_municipio m USING (codigo_ibge)
+    JOIN dim_tempo     t USING (id_tempo)
+    GROUP BY t.ano, m.sigla_uf, f.id_raca_cor
 )
-SELECT u.regiao, u.sigla_uf,
+SELECT anos.ano, u.regiao, u.sigla_uf,
        r.codigo AS raca_cor, r.descricao AS raca_cor_descricao, r.grupo AS grupo_racial,
        pop.pop_fem,
        COALESCE(o.obitos, 0) AS obitos,
@@ -268,16 +272,17 @@ SELECT u.regiao, u.sigla_uf,
             THEN ROUND(COALESCE(o.obitos, 0) * 100000.0 / NULLIF(pop.pop_fem, 0), 2)
        END AS taxa_100mil
 FROM pop
+CROSS JOIN anos
 JOIN dim_uf       u USING (sigla_uf)
 JOIN dim_raca_cor r USING (id_raca_cor)
-LEFT JOIN obitos  o ON o.sigla_uf = pop.sigla_uf AND o.id_raca_cor = pop.id_raca_cor;
+LEFT JOIN obitos  o ON o.ano = anos.ano AND o.sigla_uf = pop.sigla_uf AND o.id_raca_cor = pop.id_raca_cor;
 
 -- Comparação Sinesp × SIM por município, só nos meses cobertos pelo SIM.
 -- feminicidios_sinesp / obitos_fem_agressao_sim indica que parcela das mortes
 -- violentas de mulheres foi registrada pela polícia como feminicídio.
 CREATE VIEW vw_comparativo_sinesp_sim AS
 WITH s AS (
-    SELECT f.codigo_ibge,
+    SELECT t.ano, f.codigo_ibge,
            SUM(f.vitimas_fem) FILTER (WHERE e.codigo = 'feminicidio')           AS feminicidios,
            SUM(f.vitimas_fem) FILTER (WHERE e.codigo = 'tentativa_feminicidio') AS tentativas_feminicidio,
            SUM(f.vitimas_fem) FILTER (WHERE e.tipo = 'consumado')               AS mortes_violentas_fem
@@ -285,18 +290,21 @@ WITH s AS (
     JOIN dim_evento e USING (id_evento)
     JOIN dim_tempo  t USING (id_tempo)
     WHERE t.sim_periodo_coberto
-    GROUP BY f.codigo_ibge
+    GROUP BY t.ano, f.codigo_ibge
 ), o AS (
-    SELECT codigo_ibge, SUM(obitos) AS obitos
-    FROM fato_obito_sim_raca GROUP BY codigo_ibge
+    SELECT t.ano, f.codigo_ibge, SUM(f.obitos) AS obitos
+    FROM fato_obito_sim_raca f JOIN dim_tempo t USING (id_tempo)
+    GROUP BY t.ano, f.codigo_ibge
+), chaves AS (
+    SELECT ano, codigo_ibge FROM s UNION SELECT ano, codigo_ibge FROM o
 )
-SELECT u.regiao, u.sigla_uf, m.codigo_ibge, m.nome AS municipio,
+SELECT k.ano, u.regiao, u.sigla_uf, m.codigo_ibge, m.nome AS municipio,
        COALESCE(s.feminicidios, 0)           AS feminicidios_sinesp,
        COALESCE(s.tentativas_feminicidio, 0) AS tentativas_feminicidio_sinesp,
        COALESCE(s.mortes_violentas_fem, 0)   AS mortes_violentas_fem_sinesp,
        COALESCE(o.obitos, 0)                 AS obitos_fem_agressao_sim
-FROM dim_municipio m
+FROM chaves k
+JOIN dim_municipio m ON m.codigo_ibge = k.codigo_ibge
 JOIN dim_uf u USING (sigla_uf)
-LEFT JOIN s ON s.codigo_ibge = m.codigo_ibge
-LEFT JOIN o ON o.codigo_ibge = m.codigo_ibge
-WHERE s.codigo_ibge IS NOT NULL OR o.codigo_ibge IS NOT NULL;
+LEFT JOIN s ON s.ano = k.ano AND s.codigo_ibge = k.codigo_ibge
+LEFT JOIN o ON o.ano = k.ano AND o.codigo_ibge = k.codigo_ibge;

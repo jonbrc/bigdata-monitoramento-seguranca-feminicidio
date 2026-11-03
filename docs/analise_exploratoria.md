@@ -1,12 +1,142 @@
 # Análise exploratória das bases brutas
 
-_Gerado automaticamente por `python -m etl.exploratory_analysis` em 2026-10-08 13:35._
+_Gerado automaticamente por `python -m etl.exploratory_analysis` em 2026-11-03 09:29._
 
 ## Tabela de referência — municípios IBGE
 
 - Arquivo: `data/reference/municipios_ibge.csv`
 - Municípios: 5.571; códigos duplicados: 0
 - Código IBGE de 7 dígitos; os 6 primeiros correspondem ao código usado no SIM.
+
+## Base 1 — Sinesp VDE 2024
+
+- **Arquivo:** `BancoVDE 2024.xlsx` (planilha Excel, aba `2024`)
+- **Registros:** 764.820
+- **Colunas:** 14
+
+### Colunas, tipos e nulos
+
+| coluna | tipo aparente | nulos | % nulos |
+|---|---|---|---|
+| uf | str | 0 | 0.0% |
+| municipio | str | 0 | 0.0% |
+| evento | str | 0 | 0.0% |
+| data_referencia | datetime64[us] | 0 | 0.0% |
+| agente | str | 758.988 | 99.2% |
+| arma | str | 758.988 | 99.2% |
+| faixa_etaria | str | 762.876 | 99.7% |
+| feminino | float64 | 84.092 | 11.0% |
+| masculino | float64 | 84.021 | 11.0% |
+| nao_informado | float64 | 84.245 | 11.0% |
+| total_vitima | float64 | 79.536 | 10.4% |
+| total | float64 | 690.912 | 90.3% |
+| total_peso | float64 | 763.613 | 99.8% |
+| abrangencia | str | 0 | 0.0% |
+
+### Período
+
+- `data_referencia`: 2024-01-01 a 2024-12-01 (12 meses distintos; datas inválidas: 0)
+- Granularidade mensal (sempre o dia 1 do mês).
+
+### Eventos (31 tipos)
+
+| evento | registros | abrangencias | linhas_municipio_nao_informado | soma_feminino | soma_total_vitima | soma_total |
+|---|---|---|---|---|---|---|
+| Apreensão de Cocaína | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 0 |
+| Apreensão de Maconha | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 0 |
+| Arma de Fogo Apreendida | 5.832 | Estadual, Polícia Federal | 5.832 | 0 | 0 | 105.893 |
+| Atendimento pré-hospitalar | 324 | Estadual | 324 | 0 | 0 | 1.022.509 |
+| Busca e salvamento | 324 | Estadual | 324 | 0 | 0 | 428.968 |
+| Combate a incêndios | 324 | Estadual | 324 | 0 | 0 | 351.611 |
+| Emissão de Alvarás de licença | 324 | Estadual | 324 | 0 | 0 | 1.475.819 |
+| Estupro | 324 | Estadual | 324 | 22.736 | 25.168 | 0 |
+| Estupro de vulnerável | 324 | Estadual | 324 | 54.514 | 64.018 | 0 |
+| Feminicídio | 67.599 | Estadual | 375 | 1.494 | 1.501 | 0 |
+| Furto de veículo | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 215.809 |
+| Homicídio doloso | 67.599 | Estadual | 375 | 2.313 | 35.136 | 0 |
+| Lesão corporal seguida de morte | 67.599 | Estadual | 375 | 68 | 770 | 0 |
+| Mandado de prisão cumprido | 67.548 | Estadual | 324 | 0 | 0 | 278.192 |
+| Morte de Agente do Estado | 2.916 | Estadual, Polícia Federal, Polícia Rodoviária Federal | 2.916 | 8 | 201 | 0 |
+| Morte no trânsito ou em decorrência dele (exceto homicídio doloso) | 67.599 | Estadual | 375 | 5.085 | 26.212 | 0 |
+| Morte por intervenção de Agente do Estado | 972 | Estadual, Polícia Federal, Polícia Rodoviária Federal | 972 | 45 | 6.249 | 0 |
+| Mortes a esclarecer (sem indício de crime) | 67.599 | Estadual | 375 | 3.255 | 13.987 | 0 |
+| Mortes no trânsito | 67.548 | Polícia Rodoviária Federal | 324 | 1.171 | 6.160 | 0 |
+| Pessoa Desaparecida | 972 | Estadual | 972 | 28.851 | 81.580 | 0 |
+| Pessoa Localizada | 972 | Estadual | 972 | 20.148 | 55.964 | 0 |
+| Realização de vistorias | 324 | Estadual | 324 | 0 | 0 | 724.303 |
+| Roubo a instituição financeira | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 102 |
+| Roubo de carga | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 10.344 |
+| Roubo de veículo | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 126.255 |
+| Roubo seguido de morte (latrocínio) | 67.599 | Estadual | 375 | 100 | 967 | 0 |
+| Suicídio | 67.599 | Estadual | 375 | 3.514 | 16.412 | 0 |
+| Suicídio de Agente do Estado | 2.916 | Estadual, Polícia Federal, Polícia Rodoviária Federal | 2.916 | 12 | 157 | 0 |
+| Tentativa de feminicídio | 67.548 | Estadual | 324 | 3.803 | 3.862 | 0 |
+| Tentativa de homicídio | 67.599 | Estadual | 375 | 5.704 | 36.973 | 0 |
+| Tráfico de drogas | 648 | Estadual, Polícia Federal | 648 | 0 | 0 | 188.518 |
+
+Observações:
+- Eventos com vítimas usam `feminino`/`masculino`/`nao_informado`/`total_vitima`; eventos sem vítimas (apreensões, mandados etc.) usam `total` ou `total_peso`.
+- Eventos em que todas as linhas têm município `NÃO INFORMADO` só existem no nível estadual e não podem ser cruzados por município.
+
+### Medidas numéricas
+
+- Valores negativos: {'feminino': 0, 'masculino': 0, 'nao_informado': 0, 'total_vitima': 0, 'total': 0}
+- Valores não inteiros: {'feminino': 0, 'masculino': 0, 'nao_informado': 0, 'total_vitima': 0, 'total': 0}
+- Linhas com `total_vitima` = 0: 616.086 (80.6%) — linhas sem ocorrência.
+
+### Duplicidades
+
+- Linhas idênticas (todas as colunas): 3.918 excedentes
+- Linhas repetidas na chave lógica `uf + municipio + evento + data_referencia + agente + arma + faixa_etaria + abrangencia`: 4.632 excedentes (ou seja, 714 com mesma chave e medidas diferentes)
+
+Municípios com chave repetida:
+
+| uf | municipio | linhas |
+|---|---|---|
+| DF | BRASÍLIA | 4.356 |
+| BA | NÃO INFORMADO | 192 |
+| RJ | NÃO INFORMADO | 192 |
+| PR | NÃO INFORMADO | 192 |
+| DF | NÃO INFORMADO | 112 |
+| AP | NÃO INFORMADO | 64 |
+| AM | NÃO INFORMADO | 48 |
+| SP | NÃO INFORMADO | 16 |
+
+- Exemplo: `DF/BRASÍLIA` tem 33 linhas por mês para o evento Feminicídio — provavelmente uma por região administrativa (o DF tem 33), todas com o mesmo nome de município.
+
+### Município, UF, texto e encoding
+
+- UFs: 27 (fora do padrão: nenhuma)
+- Pares UF + município distintos: 5.597 (5.570 sem contar `NÃO INFORMADO`)
+- Linhas com município `NÃO INFORMADO`: 25.356
+- Nomes de município que se repetem em UFs diferentes: 505 pares → o nome sozinho **não** é chave; é preciso UF + município.
+- **Não há código IBGE** na base; o município é identificado só por UF + nome.
+- Nomes com espaços nas pontas: 0
+- Nomes fora de maiúsculas: 0
+- Indícios de problema de encoding (mojibake): 0
+
+### Compatibilidade com a tabela de municípios IBGE
+
+Comparação por UF + nome normalizado (sem acento, maiúsculas, sem hífen/apóstrofo):
+
+- Municípios do Sinesp: 5.570
+- Encontrados na tabela IBGE: 5.560
+- Sem correspondência: 10
+
+| uf | municipio |
+|---|---|
+| BA | MUQUÉM DO SÃO FRANCISCO |
+| BA | SANTA TEREZINHA |
+| MG | DONA EUZÉBIA |
+| MG | SÃO TOMÉ DAS LETRAS |
+| PE | SÃO CAITANO |
+| RN | CAMPO GRANDE |
+| RN | JANUÁRIO CICCO |
+| SE | AMPARO DO SÃO FRANCISCO |
+| SP | FLORÍNEA |
+| TO | TABOCÃO |
+
+Os casos sem correspondência são grafias diferentes do mesmo município (nome antigo ou variante) e precisam de um mapeamento explícito.
 
 ## Base 1 — Sinesp VDE 2025
 
@@ -139,6 +269,186 @@ Comparação por UF + nome normalizado (sem acento, maiúsculas, sem hífen/apó
 | TO | TABOCÃO |
 
 Os casos sem correspondência são grafias diferentes do mesmo município (nome antigo ou variante) e precisam de um mapeamento explícito.
+
+## Base 2 — SIM 2024
+
+- **Arquivo:** `Mortalidade_Geral_2024.csv` (CSV, separador `;`, lido como `latin-1`)
+- **Registros:** 1.527.369
+- **Colunas:** 88
+- Todas as colunas lidas como texto (são códigos; ver `etl/extract.py`).
+
+### Nulos por coluna (base inteira)
+
+<details><summary>Todas as colunas</summary>
+
+| coluna | tipo aparente | nulos | % nulos |
+|---|---|---|---|
+| contador | texto/código | 0 | 0.0% |
+| ORIGEM | texto/código | 0 | 0.0% |
+| TIPOBITO | texto/código | 0 | 0.0% |
+| DTOBITO | texto/código | 0 | 0.0% |
+| HORAOBITO | texto/código | 53.186 | 3.5% |
+| NATURAL | texto/código | 62.157 | 4.1% |
+| CODMUNNATU | texto/código | 81.581 | 5.3% |
+| DTNASC | texto/código | 2.745 | 0.2% |
+| IDADE | texto/código | 53 | 0.0% |
+| SEXO | texto/código | 0 | 0.0% |
+| RACACOR | texto/código | 20.378 | 1.3% |
+| ESTCIV | texto/código | 63.557 | 4.2% |
+| ESC | texto/código | 85.164 | 5.6% |
+| ESC2010 | texto/código | 97.293 | 6.4% |
+| SERIESCFAL | texto/código | 1.082.654 | 70.9% |
+| OCUP | texto/código | 202.165 | 13.2% |
+| CODMUNRES | texto/código | 0 | 0.0% |
+| LOCOCOR | texto/código | 67 | 0.0% |
+| CODESTAB | texto/código | 406.010 | 26.6% |
+| CODMUNOCOR | texto/código | 0 | 0.0% |
+| IDADEMAE | texto/código | 1.500.029 | 98.2% |
+| ESCMAE | texto/código | 1.500.385 | 98.2% |
+| ESCMAE2010 | texto/código | 1.500.627 | 98.2% |
+| SERIESCMAE | texto/código | 1.515.784 | 99.2% |
+| OCUPMAE | texto/código | 1.503.113 | 98.4% |
+| QTDFILVIVO | texto/código | 1.500.147 | 98.2% |
+| QTDFILMORT | texto/código | 1.500.939 | 98.3% |
+| GRAVIDEZ | texto/código | 1.499.470 | 98.2% |
+| SEMAGESTAC | texto/código | 1.500.668 | 98.3% |
+| GESTACAO | texto/código | 1.500.668 | 98.3% |
+| PARTO | texto/código | 1.499.626 | 98.2% |
+| OBITOPARTO | texto/código | 1.499.920 | 98.2% |
+| PESO | texto/código | 1.500.516 | 98.2% |
+| TPMORTEOCO | texto/código | 1.437.950 | 94.1% |
+| OBITOGRAV | texto/código | 1.437.043 | 94.1% |
+| OBITOPUERP | texto/código | 1.437.065 | 94.1% |
+| ASSISTMED | texto/código | 467.581 | 30.6% |
+| EXAME | texto/código | 1.521.455 | 99.6% |
+| CIRURGIA | texto/código | 1.521.695 | 99.6% |
+| NECROPSIA | texto/código | 436.762 | 28.6% |
+| LINHAA | texto/código | 45.742 | 3.0% |
+| LINHAB | texto/código | 355.755 | 23.3% |
+| LINHAC | texto/código | 800.879 | 52.4% |
+| LINHAD | texto/código | 1.219.498 | 79.8% |
+| LINHAII | texto/código | 868.091 | 56.8% |
+| CAUSABAS | texto/código | 0 | 0.0% |
+| CB_PRE | texto/código | 1.527.369 | 100.0% |
+| COMUNSVOIM | texto/código | 1.254.068 | 82.1% |
+| DTATESTADO | texto/código | 5.248 | 0.3% |
+| CIRCOBITO | texto/código | 1.369.397 | 89.7% |
+| ACIDTRAB | texto/código | 1.472.302 | 96.4% |
+| FONTE | texto/código | 1.400.676 | 91.7% |
+| NUMEROLOTE | texto/código | 113 | 0.0% |
+| DTINVESTIG | texto/código | 1.286.770 | 84.2% |
+| DTCADASTRO | texto/código | 458 | 0.0% |
+| ATESTANTE | texto/código | 101.435 | 6.6% |
+| STCODIFICA | texto/código | 535 | 0.0% |
+| CODIFICADO | texto/código | 113 | 0.0% |
+| VERSAOSIST | texto/código | 113 | 0.0% |
+| VERSAOSCB | texto/código | 51.752 | 3.4% |
+| FONTEINV | texto/código | 1.284.656 | 84.1% |
+| DTRECEBIM | texto/código | 61.676 | 4.0% |
+| ATESTADO | texto/código | 0 | 0.0% |
+| DTRECORIGA | texto/código | 0 | 0.0% |
+| OPOR_DO | texto/código | 0 | 0.0% |
+| CAUSAMAT | texto/código | 1.527.347 | 100.0% |
+| ESCMAEAGR1 | texto/código | 1.521.176 | 99.6% |
+| ESCFALAGR1 | texto/código | 1.283.285 | 84.0% |
+| STDOEPIDEM | texto/código | 113 | 0.0% |
+| STDONOVA | texto/código | 0 | 0.0% |
+| DIFDATA | texto/código | 0 | 0.0% |
+| NUDIASOBCO | texto/código | 1.465.321 | 95.9% |
+| DTCADINV | texto/código | 1.464.973 | 95.9% |
+| TPOBITOCOR | texto/código | 1.464.973 | 95.9% |
+| DTCONINV | texto/código | 1.465.369 | 95.9% |
+| FONTES | texto/código | 1.499.807 | 98.2% |
+| TPRESGINFO | texto/código | 1.524.900 | 99.8% |
+| TPNIVELINV | texto/código | 1.464.922 | 95.9% |
+| DTCADINF | texto/código | 1.499.772 | 98.2% |
+| MORTEPARTO | texto/código | 1.499.772 | 98.2% |
+| DTCONCASO | texto/código | 1.502.184 | 98.4% |
+| ALTCAUSA | texto/código | 1.500.756 | 98.3% |
+| CAUSABAS_O | texto/código | 895 | 0.1% |
+| TPPOS | texto/código | 529.801 | 34.7% |
+| TP_ALTERA | texto/código | 1.523.553 | 99.8% |
+| CB_ALT | texto/código | 1.523.600 | 99.8% |
+| COVID_CLAS | texto/código | 1.527.369 | 100.0% |
+| MAT_CLAS | texto/código | 1.527.369 | 100.0% |
+
+</details>
+
+### Duplicidades e chaves
+
+- `contador` repetido: 0 → `contador` identifica a linha.
+- Linhas idênticas ignorando `contador`: 16
+- Cada linha é uma declaração de óbito; não há identificador da pessoa (o que é coerente com a LGPD).
+
+### Período
+
+- `DTOBITO` (formato `ddmmaaaa`): 2024-01-01 a 2024-12-31; datas inválidas: 0
+- Óbitos por mês:
+
+| mês | óbitos |
+|---|---|
+| 2024-01 | 120.803 |
+| 2024-02 | 115.188 |
+| 2024-03 | 133.061 |
+| 2024-04 | 132.705 |
+| 2024-05 | 137.383 |
+| 2024-06 | 131.722 |
+| 2024-07 | 135.268 |
+| 2024-08 | 132.056 |
+| 2024-09 | 125.871 |
+| 2024-10 | 123.736 |
+| 2024-11 | 116.904 |
+| 2024-12 | 122.672 |
+
+Base consolidada: cobre janeiro a dezembro.
+
+### Formatação e consistência
+
+- `SEXO`: {'0': '522', '1': '834.007', '2': '692.840'} (1 = masculino, 2 = feminino, 0 = ignorado)
+- `CAUSABAS` com `*`: 3; tamanhos: {3: '258.460', 4: '1.268.909'}
+- Valores não numéricos em campos de código: {'CODMUNRES': 0, 'CODMUNOCOR': 0, 'SEXO': 0, 'RACACOR': 0}
+- O arquivo contém apenas caracteres ASCII; não há texto acentuado e, portanto, não há risco de problema de encoding.
+
+### Recorte do tema (AI02): mulheres, causa básica X85–Y09
+
+- Registros no recorte: **3.538** (0.23% da base)
+- Duplicidades no recorte (ignorando `contador`): 0
+- Categorias CID mais frequentes: {'X95': 1411, 'X99': 975, 'X93': 250, 'Y00': 233, 'X91': 207, 'Y09': 195, 'Y04': 102, 'X97': 64}
+
+Nulos nos campos mapeados na AI02 (dentro do recorte):
+
+| coluna | tipo aparente | nulos | % nulos |
+|---|---|---|---|
+| DTOBITO | texto/código | 0 | 0.0% |
+| SEXO | texto/código | 0 | 0.0% |
+| CAUSABAS | texto/código | 0 | 0.0% |
+| CODMUNRES | texto/código | 0 | 0.0% |
+| CODMUNOCOR | texto/código | 0 | 0.0% |
+| RACACOR | texto/código | 39 | 1.1% |
+| IDADE | texto/código | 0 | 0.0% |
+| ESTCIV | texto/código | 156 | 4.4% |
+| ESC2010 | texto/código | 252 | 7.1% |
+| LOCOCOR | texto/código | 0 | 0.0% |
+| CODESTAB | texto/código | 2.830 | 80.0% |
+| NATURAL | texto/código | 107 | 3.0% |
+| CODMUNNATU | texto/código | 135 | 3.8% |
+| TIPOBITO | texto/código | 0 | 0.0% |
+
+Distribuição das categorias interseccionais (dentro do recorte):
+
+- `RACACOR`: 4=2152, 1=1025, 2=252, 5=65, nulo=39, 3=5
+- `ESC2010`: 2=1142, 3=868, 1=505, 9=414, nulo=252, 5=146, 0=140, 4=71
+- `ESTCIV`: 1=2278, 2=412, 4=208, 5=189, 9=186, nulo=156, 3=109
+- `LOCOCOR`: 3=1186, 4=901, 5=731, 1=631, 2=77, 9=12
+- `CIRCOBITO`: 3=3353, 9=111, 1=73, nulo=1
+- `IDADE` — 1º dígito (unidade: 0/1 min/h, 2 dias, 3 meses, 4 anos, 5 anos+100, 9 ignorado): 0=23, 2=3, 3=20, 4=3473, 9=19
+
+### Códigos de município
+
+- Tamanho de `CODMUNRES`: {6: 3538}; `CODMUNOCOR`: {6: 3538} → código IBGE de **6 dígitos** (sem dígito verificador).
+- `CODMUNRES` terminado em `0000` (município ignorado, só UF): 22
+- `CODMUNRES` fora da tabela IBGE: 22; `CODMUNOCOR` fora da tabela IBGE: 0
+- Óbitos com município de residência ≠ município de ocorrência: 784 (22.2%)
 
 ## Base 2 — SIM 2025 (preliminar)
 

@@ -45,7 +45,9 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame, municipios: pd.DataFrame
 
     # Cobertura do SIM (base preliminar): nos meses cobertos, ausência de óbito = 0;
     # nos meses não cobertos, as colunas do SIM ficam nulas (sem dado).
-    df["sim_periodo_coberto"] = (df["ano"] == config.SIM_ANO) & df["mes"].isin(config.SIM_MESES_COBERTOS)
+    df["sim_periodo_coberto"] = [
+        m in config.SIM_MESES_COBERTOS.get(a, []) for a, m in zip(df["ano"], df["mes"])
+    ]
     cols_sim = ["sim_obitos_fem_agressao"] + colunas_raca() + colunas_faixa()
     for c in cols_sim:
         df[c] = df[c].astype("Int64")

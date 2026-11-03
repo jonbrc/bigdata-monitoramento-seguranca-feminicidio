@@ -23,29 +23,30 @@ def _verificar_arquivo(caminho) -> None:
 # ---------------------------------------------------------------------------
 # Base 1 — Sinesp VDE
 # ---------------------------------------------------------------------------
+def ler_sinesp_ano(ano: int) -> pd.DataFrame:
+    arquivo = config.SINESP_ARQUIVOS[ano]
+    _verificar_arquivo(arquivo)
+    return pd.read_excel(arquivo, sheet_name=str(ano), engine=config.SINESP_EXCEL_ENGINE)
+
+
 def ler_sinesp() -> pd.DataFrame:
-    """Lê a planilha do Sinesp VDE 2025 inteira (~830 mil linhas)."""
-    _verificar_arquivo(config.SINESP_FILE)
-    return pd.read_excel(
-        config.SINESP_FILE,
-        sheet_name=config.SINESP_SHEET,
-        engine=config.SINESP_EXCEL_ENGINE,
-    )
+    return pd.concat([ler_sinesp_ano(ano) for ano in config.ANOS], ignore_index=True)
 
 
 # ---------------------------------------------------------------------------
 # Base 2 — SIM
 # ---------------------------------------------------------------------------
-def iterar_sim(usecols: list[str] | None = None) -> Iterator[pd.DataFrame]:
+def iterar_sim(ano: int, usecols: list[str] | None = None) -> Iterator[pd.DataFrame]:
     """Lê o CSV do SIM em blocos.
 
     Todas as colunas entram como texto: os campos do SIM são códigos
     (ex.: CODESTAB "0000655", datas "ddmmaaaa") e a conversão numérica
     automática perderia zeros à esquerda. A tipagem é feita na transformação.
     """
-    _verificar_arquivo(config.SIM_FILE)
+    arquivo = config.SIM_ARQUIVOS[ano]
+    _verificar_arquivo(arquivo)
     yield from pd.read_csv(
-        config.SIM_FILE,
+        arquivo,
         sep=config.SIM_SEPARATOR,
         encoding=config.SIM_ENCODING,
         dtype=str,
@@ -55,6 +56,7 @@ def iterar_sim(usecols: list[str] | None = None) -> Iterator[pd.DataFrame]:
 
 
 def ler_sim_filtrado(
+    ano: int,
     filtro: Callable[[pd.DataFrame], pd.Series],
     usecols: list[str] | None = None,
 ) -> tuple[pd.DataFrame, int]:
@@ -64,7 +66,7 @@ def ler_sim_filtrado(
     filtrado fica em memória, como previsto na AI02.
     """
     partes, total = [], 0
-    for bloco in iterar_sim(usecols):
+    for bloco in iterar_sim(ano, usecols):
         total += len(bloco)
         partes.append(bloco[filtro(bloco)])
     return pd.concat(partes, ignore_index=True), total

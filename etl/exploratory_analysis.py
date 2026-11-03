@@ -50,13 +50,13 @@ def perfil_nulos(nulos: pd.Series, total: int, tipos: pd.Series) -> pd.DataFrame
 # ---------------------------------------------------------------------------
 # Base 1 — Sinesp
 # ---------------------------------------------------------------------------
-def analisar_sinesp(municipios: pd.DataFrame) -> list[str]:
+def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
     print("Lendo Sinesp VDE...")
-    df = extract.ler_sinesp()
+    df = extract.ler_sinesp_ano(ano)
     n = len(df)
-    out = ["## Base 1 — Sinesp VDE 2025", ""]
+    out = [f"## Base 1 — Sinesp VDE {ano}", ""]
     out += [
-        f"- **Arquivo:** `{config.SINESP_FILE.name}` (planilha Excel, aba `{config.SINESP_SHEET}`)",
+        f"- **Arquivo:** `{config.SINESP_ARQUIVOS[ano].name}` (planilha Excel, aba `{ano}`)",
         f"- **Registros:** {fmt(n)}",
         f"- **Colunas:** {df.shape[1]}",
         "",
@@ -202,7 +202,7 @@ def analisar_sinesp(municipios: pd.DataFrame) -> list[str]:
 # ---------------------------------------------------------------------------
 # Base 2 — SIM
 # ---------------------------------------------------------------------------
-def analisar_sim(municipios: pd.DataFrame) -> list[str]:
+def analisar_sim(municipios: pd.DataFrame, ano: int) -> list[str]:
     print("Lendo SIM em blocos...")
     total = 0
     colunas = None
@@ -218,7 +218,7 @@ def analisar_sim(municipios: pd.DataFrame) -> list[str]:
     subconjunto = []
     nao_numericos = {c: 0 for c in ["CODMUNRES", "CODMUNOCOR", "SEXO", "RACACOR"]}
 
-    for bloco in extract.iterar_sim():
+    for bloco in extract.iterar_sim(ano):
         if colunas is None:
             colunas = list(bloco.columns)
             nulos = pd.Series(0, index=colunas)
@@ -242,9 +242,10 @@ def analisar_sim(municipios: pd.DataFrame) -> list[str]:
     hashes = pd.concat(hashes)
     contadores = pd.concat(contadores)
     sub = pd.concat(subconjunto, ignore_index=True)
-    out = ["## Base 2 — SIM 2025 (preliminar)", ""]
+    preliminar = len(config.SIM_MESES_COBERTOS[ano]) < 12
+    out = [f"## Base 2 — SIM {ano}{' (preliminar)' if preliminar else ''}", ""]
     out += [
-        f"- **Arquivo:** `{config.SIM_FILE.name}` (CSV, separador `{config.SIM_SEPARATOR}`, "
+        f"- **Arquivo:** `{config.SIM_ARQUIVOS[ano].name}` (CSV, separador `{config.SIM_SEPARATOR}`, "
         f"lido como `{config.SIM_ENCODING}`)",
         f"- **Registros:** {fmt(total)}",
         f"- **Colunas:** {len(colunas)}",
@@ -275,8 +276,9 @@ def analisar_sim(municipios: pd.DataFrame) -> list[str]:
         "",
         tabela_md(meses.sort_index().astype(int).map(fmt).rename_axis("mês").reset_index(name="óbitos")),
         "",
-        "Base **preliminar**: a cobertura cai a partir de agosto e não há óbitos depois de "
-        "setembro/2025, enquanto o Sinesp cobre janeiro a dezembro.",
+        ("Base **preliminar**: a cobertura cai a partir de agosto e não há óbitos depois de "
+         f"setembro/{ano}, enquanto o Sinesp cobre janeiro a dezembro." if preliminar
+         else "Base consolidada: cobre janeiro a dezembro."),
         "",
         "### Formatação e consistência",
         "",
@@ -351,8 +353,10 @@ def main() -> None:
         "- Código IBGE de 7 dígitos; os 6 primeiros correspondem ao código usado no SIM.",
         "",
     ]
-    linhas += analisar_sinesp(municipios)
-    linhas += analisar_sim(municipios)
+    for ano in config.ANOS:
+        linhas += analisar_sinesp(municipios, ano)
+    for ano in config.ANOS:
+        linhas += analisar_sim(municipios, ano)
 
     config.DOCS_DIR.mkdir(parents=True, exist_ok=True)
     config.EDA_REPORT_FILE.write_text("\n".join(linhas), encoding="utf-8")

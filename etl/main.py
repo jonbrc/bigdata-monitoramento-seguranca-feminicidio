@@ -23,7 +23,7 @@ def fmt(n: int) -> str:
 def main() -> int:
     inicio = time.time()
     print("=" * 64)
-    print("ETL — Monitoramento de Segurança Pública e Feminicídio (2025)")
+    print(f"ETL — Monitoramento de Segurança Pública e Feminicídio ({'-'.join(map(str, config.ANOS))})")
     print("=" * 64)
 
     # EXTRAÇÃO + TRANSFORMAÇÃO
