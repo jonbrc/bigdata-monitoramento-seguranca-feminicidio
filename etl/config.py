@@ -93,6 +93,33 @@ SIM_RACACOR = {
 }
 SIM_RACACOR_IGNORADA = "raca_ignorada"
 
+SIM_SEXO = {"1": "masculino", "2": "feminino"}
+
+SIM_LOCAL_OBITO = {
+    "1": "estabelecimento_saude",
+    "2": "estabelecimento_saude",
+    "3": "domicilio",
+    "4": "via_publica",
+    "5": "outros",
+    "6": "aldeia_indigena",
+}
+SIM_LOCAL_IGNORADO = "local_ignorado"
+
+SIM_MEIO_AGRESSAO = {
+    **{f"X{n}": "envenenamento" for n in range(85, 91)},
+    "X91": "enforcamento_sufocacao",
+    "X92": "outros",
+    "X93": "arma_fogo", "X94": "arma_fogo", "X95": "arma_fogo",
+    "X96": "outros", "X97": "outros", "X98": "outros",
+    "X99": "objeto_cortante",
+    "Y00": "objeto_contundente",
+    "Y01": "outros", "Y02": "outros", "Y03": "outros",
+    "Y04": "forca_corporal", "Y05": "forca_corporal",
+    "Y06": "maus_tratos", "Y07": "maus_tratos",
+    "Y08": "outros",
+    "Y09": "meio_nao_especificado",
+}
+
 # Faixas etárias para as contagens do SIM: (idade mínima, idade máxima ou None, sufixo).
 # 0–17 = menores de idade (ECA); 60+ = pessoas idosas (Estatuto da Pessoa Idosa).
 SIM_FAIXAS_ETARIAS = [
@@ -175,6 +202,7 @@ POPULACAO_API_UFS_GRANDES = {31, 35}
 # Saída
 # ---------------------------------------------------------------------------
 OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes.csv"
+OUTPUT_SIM_FILE = PROCESSED_DIR / "sim_obitos_agressao.csv"
 OUTPUT_SEPARATOR = ","
 OUTPUT_ENCODING = "utf-8"
 EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"

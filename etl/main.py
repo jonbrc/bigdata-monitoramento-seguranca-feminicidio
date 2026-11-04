@@ -13,7 +13,7 @@ from etl.transform_sim import ler_e_tratar_sim
 from etl.transform_sim import resumo as resumo_sim
 from etl.transform_sinesp import resumo as resumo_sinesp
 from etl.transform_sinesp import tratar_sinesp
-from etl.validate import validar
+from etl.validate import validar, validar_detalhamento
 
 
 def fmt(n: int) -> str:
@@ -33,7 +33,7 @@ def main() -> int:
     print(resumo_sinesp(est_sinesp))
 
     print("\n[2/4] SIM: lendo em blocos e tratando...")
-    sim, est_sim = ler_e_tratar_sim(municipios)
+    sim, sim_detalhado, est_sim = ler_e_tratar_sim(municipios)
     print(resumo_sim(est_sim))
 
     # RELACIONAMENTO
@@ -49,7 +49,7 @@ def main() -> int:
 
     # VALIDAÇÃO
     print("\n[4/4] Validando...")
-    checks = validar(final, est_sinesp, est_sim, est_rel)
+    checks = validar(final, est_sinesp, est_sim, est_rel) + validar_detalhamento(sim_detalhado, final, est_sim)
     for descricao, ok in checks:
         print(f"  [{'OK' if ok else 'FALHOU'}] {descricao}")
     if not all(ok for _, ok in checks):
@@ -60,13 +60,17 @@ def main() -> int:
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     final.to_csv(config.OUTPUT_FILE, index=False, sep=config.OUTPUT_SEPARATOR,
                  encoding=config.OUTPUT_ENCODING)
+    sim_detalhado.to_csv(config.OUTPUT_SIM_FILE, index=False, sep=config.OUTPUT_SEPARATOR,
+                         encoding=config.OUTPUT_ENCODING)
 
     print("\nResultado:")
     print(f"  Registros finais: {fmt(len(final))}")
     print(f"  Colunas finais:   {final.shape[1]}")
     print(f"  Municípios:       {fmt(final['codigo_ibge'].nunique())}")
-    print("\nArquivo gerado:")
+    print(f"  Detalhamento SIM: {fmt(len(sim_detalhado))} linhas · {fmt(int(sim_detalhado['obitos'].sum()))} óbitos")
+    print("\nArquivos gerados:")
     print(f"  {config.OUTPUT_FILE.relative_to(config.ROOT_DIR).as_posix()}")
+    print(f"  {config.OUTPUT_SIM_FILE.relative_to(config.ROOT_DIR).as_posix()}")
     print(f"\nTempo total: {time.time() - inicio:.0f} s")
     return 0
 

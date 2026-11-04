@@ -72,6 +72,11 @@ def ler_sim_filtrado(
     return pd.concat(partes, ignore_index=True), total
 
 
+def filtro_agressao(df: pd.DataFrame) -> pd.Series:
+    cid3 = df["CAUSABAS"].str.replace("*", "", regex=False).str.strip().str[:3]
+    return (cid3 >= config.SIM_CID_AGRESSAO_INICIO) & (cid3 <= config.SIM_CID_AGRESSAO_FIM)
+
+
 def filtro_feminino_agressao(df: pd.DataFrame) -> pd.Series:
     """Recorte da AI02: SEXO feminino e CAUSABAS entre X85 e Y09."""
     cid3 = df["CAUSABAS"].str.replace("*", "", regex=False).str.strip().str[:3]

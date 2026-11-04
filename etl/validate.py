@@ -6,6 +6,7 @@ interrompido e o CSV não é gravado.
 
 import pandas as pd
 
+from etl import config
 from etl.transform_sim import colunas_faixa, colunas_raca
 
 COLUNAS_ID = ["codigo_ibge", "uf", "regiao", "municipio", "ano", "mes"]
@@ -41,6 +42,34 @@ def validar(df: pd.DataFrame, est_sinesp: dict, est_sim: dict, est_rel: dict) ->
         ("Total de vítimas do Sinesp preservado após o relacionamento",
          int(df[cols_sinesp_total].fillna(0).sum().sum()) == est_sinesp["vitimas_total"]),
         ("Total de óbitos do SIM preservado após o relacionamento",
-         int(df["sim_obitos_fem_agressao"].fillna(0).sum()) == est_sim["registros_tratados"]),
+         int(df["sim_obitos_fem_agressao"].fillna(0).sum()) == est_sim["obitos_fem"]),
     ]
     return checks
+
+
+def validar_detalhamento(det: pd.DataFrame, painel: pd.DataFrame, est_sim: dict) -> list[tuple[str, bool]]:
+    categorias = {
+        "sexo": set(config.SIM_SEXO.values()),
+        "raca_cor": set(config.SIM_RACACOR.values()) | {config.SIM_RACACOR_IGNORADA},
+        "faixa_etaria": {f for _, _, f in config.SIM_FAIXAS_ETARIAS} | {config.SIM_FAIXA_IGNORADA},
+        "local_obito": set(config.SIM_LOCAL_OBITO.values()) | {config.SIM_LOCAL_IGNORADO},
+        "meio_agressao": set(config.SIM_MEIO_AGRESSAO.values()),
+    }
+    chave = ["codigo_ibge", "ano", "mes"] + list(categorias)
+    fem = det[det["sexo"] == "feminino"]
+    por_mes = fem.groupby(["codigo_ibge", "ano", "mes"])["obitos"].sum()
+    painel_mes = painel[painel["sim_periodo_coberto"]].set_index(["codigo_ibge", "ano", "mes"])["sim_obitos_fem_agressao"]
+    painel_mes = painel_mes[painel_mes > 0].astype("int64")
+    return [
+        ("Detalhamento do SIM não está vazio", len(det) > 0),
+        ("Chave do detalhamento é única", not det.duplicated(chave).any()),
+        ("Sem nulos no detalhamento", not det.isna().any().any()),
+        ("Categorias do detalhamento são as previstas",
+         all(set(det[c].unique()) <= v for c, v in categorias.items())),
+        ("Óbitos do detalhamento são positivos", bool((det["obitos"] > 0).all())),
+        ("Só meses cobertos pelo SIM no detalhamento",
+         all(m in config.SIM_MESES_COBERTOS.get(a, []) for a, m in zip(det["ano"], det["mes"]))),
+        ("Total do detalhamento = óbitos tratados do SIM", int(det["obitos"].sum()) == est_sim["registros_tratados"]),
+        ("Óbitos femininos do detalhamento = painel, por município × mês",
+         por_mes.sort_index().equals(painel_mes.sort_index())),
+    ]
