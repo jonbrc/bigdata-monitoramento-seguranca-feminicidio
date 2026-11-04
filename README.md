@@ -166,8 +166,8 @@ python -m etl.load
 
 O script:
 
-1. lê o CSV tratado em `data/processed/` e as tabelas de referência (municípios e população);
-2. converte o formato largo do CSV para o modelo estrela (ver [Modelagem do banco](#modelagem-do-banco)) e confere que nenhum total se perdeu (vítimas, óbitos e população);
+1. lê os CSVs tratados em `data/processed/` (painel e SIM detalhado) e as tabelas de referência (municípios e população);
+2. converte os dados para o modelo estrela (ver [Modelagem do banco](#modelagem-do-banco)) e confere que nenhum total se perdeu (vítimas, óbitos e população);
 3. recria o schema `dw` a partir de [`sql/schema.sql`](sql/schema.sql) e carrega as tabelas com `COPY`;
 4. confere no banco os totais carregados.
 
@@ -179,7 +179,7 @@ Para montar e conferir as tabelas **sem conectar ao banco** (útil para testar o
 python -m etl.load --dry-run
 ```
 
-Resultado esperado: `dim_municipio` 5.571 · `dim_tempo` 24 · `fato_ocorrencia_sinesp` 64.428 · `fato_obito_sim_raca` 4.515 · `fato_obito_sim_faixa` 4.895 · `fato_populacao` 33.420 linhas.
+Resultado esperado: `dim_municipio` 5.571 · `dim_tempo` 24 · `fato_ocorrencia_sinesp` 64.428 · `fato_obito_sim` 52.243 · `fato_populacao` 276.501 linhas.
 
 ## Fluxo do ETL
 
@@ -386,16 +386,19 @@ Banco relacional **PostgreSQL** (Aiven), schema `dw`, em **modelo estrela** com 
 erDiagram
     dim_uf ||--o{ dim_municipio : "contém"
     dim_municipio ||--o{ fato_ocorrencia_sinesp : ""
-    dim_municipio ||--o{ fato_obito_sim_raca : ""
-    dim_municipio ||--o{ fato_obito_sim_faixa : ""
+    dim_municipio ||--o{ fato_obito_sim : ""
     dim_municipio ||--o{ fato_populacao : ""
     dim_tempo ||--o{ fato_ocorrencia_sinesp : ""
-    dim_tempo ||--o{ fato_obito_sim_raca : ""
-    dim_tempo ||--o{ fato_obito_sim_faixa : ""
+    dim_tempo ||--o{ fato_obito_sim : ""
     dim_evento ||--o{ fato_ocorrencia_sinesp : ""
-    dim_raca_cor ||--o{ fato_obito_sim_raca : ""
+    dim_sexo ||--o{ fato_obito_sim : ""
+    dim_sexo ||--o{ fato_populacao : ""
+    dim_raca_cor ||--o{ fato_obito_sim : ""
     dim_raca_cor ||--o{ fato_populacao : ""
-    dim_faixa_etaria ||--o{ fato_obito_sim_faixa : ""
+    dim_faixa_etaria ||--o{ fato_obito_sim : ""
+    dim_faixa_etaria ||--o{ fato_populacao : ""
+    dim_local_obito ||--o{ fato_obito_sim : ""
+    dim_meio_agressao ||--o{ fato_obito_sim : ""
 
     dim_uf {
         char sigla_uf PK
@@ -424,6 +427,10 @@ erDiagram
         varchar tipo
         boolean violencia_genero
     }
+    dim_sexo {
+        smallint id_sexo PK
+        varchar codigo
+    }
     dim_raca_cor {
         smallint id_raca_cor PK
         varchar codigo
@@ -435,6 +442,15 @@ erDiagram
         smallint idade_min
         smallint idade_max
     }
+    dim_local_obito {
+        smallint id_local_obito PK
+        varchar codigo
+    }
+    dim_meio_agressao {
+        smallint id_meio_agressao PK
+        varchar codigo
+        varchar cid10
+    }
     fato_ocorrencia_sinesp {
         char codigo_ibge PK
         int id_tempo PK
@@ -442,23 +458,23 @@ erDiagram
         int vitimas_fem
         int vitimas_total
     }
-    fato_obito_sim_raca {
+    fato_obito_sim {
         char codigo_ibge PK
         int id_tempo PK
+        smallint id_sexo PK
         smallint id_raca_cor PK
-        int obitos
-    }
-    fato_obito_sim_faixa {
-        char codigo_ibge PK
-        int id_tempo PK
         smallint id_faixa_etaria PK
+        smallint id_local_obito PK
+        smallint id_meio_agressao PK
         int obitos
     }
     fato_populacao {
         char codigo_ibge PK
+        smallint id_sexo PK
         smallint id_raca_cor PK
+        smallint id_faixa_etaria PK
         smallint ano_censo PK
-        int pop_fem
+        int populacao
     }
 ```
 
@@ -466,61 +482,81 @@ erDiagram
 
 | Tabela | Tipo | Granularidade / conteúdo | Origem | Linhas |
 |---|---|---|---|---|
-| `fato_ocorrencia_sinesp` | fato | município × mês × evento: vítimas femininas e total | colunas `sinesp_<evento>_fem/_total` do CSV | 64.428 |
-| `fato_obito_sim_raca` | fato | município × mês × raça/cor: óbitos femininos por agressão | colunas `sim_obitos_fem_<raça>` | 4.515 |
-| `fato_obito_sim_faixa` | fato | município × mês × faixa etária: os mesmos óbitos | colunas `sim_obitos_fem_idade_<faixa>` | 4.895 |
-| `fato_populacao` | fato | município × raça/cor: população feminina (Censo 2022) | `populacao_censo2022.csv` (sexo feminino) | 33.420 |
+| `fato_ocorrencia_sinesp` | fato | município × mês × evento: vítimas femininas e total | colunas `sinesp_<evento>_fem/_total` do CSV principal | 64.428 |
+| `fato_obito_sim` | fato | município × mês × sexo × raça/cor × faixa etária × local × meio: óbitos por agressão | `sim_obitos_agressao.csv` | 52.243 |
+| `fato_populacao` | fato | município × sexo × raça/cor × faixa etária: população (Censo 2022) | `populacao_censo2022.csv` | 276.501 |
 | `dim_municipio` | dimensão | município, com código IBGE de 7 e 6 dígitos, capital e coordenadas | `municipios_ibge.csv` | 5.571 |
 | `dim_uf` | dimensão | UF e região | fixa no `schema.sql` | 27 |
 | `dim_tempo` | dimensão | mês, trimestre, semestre e cobertura do SIM | `etl/load.py` | 24 |
 | `dim_evento` | dimensão | evento do Sinesp, tipo (consumado/tentativa) e se é violência de gênero | fixa no `schema.sql` | 6 |
+| `dim_sexo` | dimensão | feminino, masculino | fixa no `schema.sql` | 2 |
 | `dim_raca_cor` | dimensão | raça/cor (códigos do IBGE) e grupo (Negra = preta + parda) | fixa no `schema.sql` | 6 |
 | `dim_faixa_etaria` | dimensão | faixa etária, com idade mínima e máxima | fixa no `schema.sql` | 7 |
+| `dim_local_obito` | dimensão | local do óbito (domicílio, via pública, estabelecimento de saúde...) | fixa no `schema.sql` | 6 |
+| `dim_meio_agressao` | dimensão | meio da agressão e faixa de CID-10 correspondente | fixa no `schema.sql` | 9 |
 
-O schema carregado ocupa cerca de **18 MB**, bem abaixo do limite de 1 GB do plano gratuito do Aiven.
+O schema carregado ocupa cerca de **66 MB**, bem abaixo do limite de 1 GB do plano gratuito do Aiven.
 
 ### Estratégia de organização dos dados
 
-- **Do CSV largo para o formato longo.** O CSV tem uma coluna por evento, raça/cor e faixa etária (39 colunas). No banco, essas colunas viram linhas nas tabelas fato, ligadas às dimensões. Assim cada filtro do dashboard (região/UF/município, mês, evento, raça/cor, faixa etária) vira um `WHERE` ou `GROUP BY`, sem escolher colunas, e um novo evento ou categoria entra como linha nova, sem alterar a estrutura.
-- **Raça/cor e faixa etária em fatos separados.** O CSV traz as duas contagens do SIM separadas (não cruzadas), então elas ficam em `fato_obito_sim_raca` e `fato_obito_sim_faixa`. Cada uma soma o total de óbitos; não é possível filtrar por raça **e** faixa ao mesmo tempo com os dados atuais.
-- **Fatos esparsos.** Só são gravadas combinações com pelo menos um caso; ausência de linha = 0. Exceção: nos meses fora da cobertura do SIM (`dim_tempo.sim_periodo_coberto = false`), ausência de linha nos fatos do SIM significa "sem dado", e não zero.
-- **População como fato próprio, com todos os municípios.** Resolve as duas regras de [Uso da população](#uso-da-população-taxas): a população não se repete por mês (não há risco de somá-la 12 vezes) e o denominador inclui os municípios sem ocorrência. Raça "ignorada" = total − soma das cinco categorias, então a soma por município é a população total.
-- **Integridade no banco.** Chaves primárias compostas nos fatos, chaves estrangeiras para todas as dimensões e `CHECK`s (contagens não negativas, vítimas femininas ≤ total, código IBGE com 7 dígitos, mês entre 1 e 12) garantem a veracidade dos dados mesmo fora do ETL.
-- **Nenhum dado pessoal.** O menor nível de detalhe é município × mês (LGPD).
+- **Do CSV largo para o formato longo.** O CSV principal tem uma coluna por evento (39 colunas). No banco, essas colunas viram linhas na tabela fato, ligadas às dimensões. Assim cada filtro do dashboard (região/UF/município, ano/mês, evento, sexo, raça/cor, faixa etária, local, meio) vira um `WHERE` ou `GROUP BY`, sem escolher colunas, e uma nova categoria entra como linha nova, sem alterar a estrutura.
+- **Um único fato do SIM com todas as dimensões do perfil.** `fato_obito_sim` cruza sexo, raça/cor, faixa etária, local do óbito e meio da agressão. Qualquer combinação de filtros é possível (por exemplo, mulheres negras de 18 a 29 anos mortas no domicílio) e a soma de qualquer recorte dá o total correto.
+- **População com as mesmas dimensões dos óbitos.** `fato_populacao` usa as mesmas chaves de sexo, raça/cor e faixa etária, então numerador e denominador de uma taxa podem ser filtrados pelo mesmo recorte. A população não se repete por mês (não há risco de somá-la 12 vezes) e inclui todos os 5.570 municípios, também os que não tiveram ocorrência. Raça "ignorada" = total − soma das cinco categorias.
+- **Fatos esparsos.** Só são gravadas combinações com pelo menos um caso (ou uma pessoa, na população); ausência de linha = 0. Exceção: nos meses fora da cobertura do SIM (`dim_tempo.sim_periodo_coberto = false`), ausência de linha em `fato_obito_sim` significa "sem dado", e não zero.
+- **Integridade no banco.** Chaves primárias compostas nos fatos, chaves estrangeiras para todas as dimensões e `CHECK`s (contagens positivas, vítimas femininas ≤ total, código IBGE com 7 dígitos, mês entre 1 e 12) garantem a veracidade dos dados mesmo fora do ETL. A carga também confere que os ids das dimensões fixas no `schema.sql` são os mesmos usados pelo `etl/load.py`.
+- **Nenhum dado pessoal.** O menor nível de detalhe é uma contagem por município × mês × perfil (LGPD).
 
 ### Views para o dashboard
 
 | View | Conteúdo |
 |---|---|
-| `vw_sinesp` | vítimas do Sinesp com região, UF, município, mês e evento já resolvidos |
-| `vw_sim_raca` / `vw_sim_faixa` | óbitos do SIM por raça/cor ou por faixa etária, com os atributos de filtro |
-| `vw_obitos_populacao_raca` | óbitos e população feminina por UF × raça/cor (jan–ago), base das taxas por 100 mil |
-| `vw_comparativo_sinesp_sim` | por município: feminicídios registrados pela polícia × óbitos femininos por agressão (jan–ago) |
+| `vw_sinesp` | vítimas do Sinesp com região, UF, município, ano, mês e evento já resolvidos |
+| `vw_sim` | óbitos do SIM com todos os atributos de filtro (região, UF, município, ano, mês, sexo, raça/cor, grupo racial, faixa etária, local, meio) |
+| `vw_populacao` | população do Censo 2022 com região, UF, município, sexo, raça/cor e faixa etária |
+| `vw_taxa_sim_uf` | **base das taxas do SIM:** ano × UF × sexo × raça/cor × faixa etária, com óbitos (total, no domicílio e por arma de fogo), população e meses cobertos. Inclui as combinações sem óbito, então serve de denominador completo para qualquer recorte |
+| `vw_kpi_interseccional` | Brasil, por ano × sexo × grupo racial: taxa por 100 mil (simples e anualizada), **razão em relação ao grupo branco do mesmo sexo** e % de óbitos no domicílio |
+| `vw_kpi_uf` | por ano × UF: feminicídios, taxa de feminicídio por 100 mil mulheres, % de feminicídios entre as mortes violentas de mulheres, letalidade do feminicídio, óbitos femininos no SIM e % no domicílio |
+| `vw_comparativo_sinesp_sim` | por ano × município: feminicídios registrados pela polícia × óbitos femininos por agressão, nos meses cobertos pelo SIM |
 
-Para qualquer taxa, some numerador e denominador no recorte desejado e só então divida: `SUM(obitos) * 100000 / SUM(pop_fem)`. Exemplo (taxa por grupo racial, Brasil):
+Para qualquer taxa, some numerador e denominador no recorte desejado e só então divida: `SUM(obitos) * 100000 / SUM(populacao)`. Para comparar 2025 (8 meses) com 2024, multiplique por `12 / meses_cobertos` (taxa anualizada). Exemplos:
 
 ```sql
-SELECT grupo_racial,
-       SUM(obitos)                                 AS obitos,
-       ROUND(SUM(obitos) * 100000.0 / SUM(pop_fem), 2) AS taxa_100mil
-FROM dw.vw_obitos_populacao_raca
-WHERE grupo_racial <> 'Ignorada'
-GROUP BY grupo_racial
+-- Taxa de homicídio por sexo × grupo racial e razão em relação ao grupo branco (Brasil)
+SELECT ano, sexo, grupo_racial, taxa_100mil_anualizada, razao_vs_branca, pct_domicilio
+FROM dw.vw_kpi_interseccional
+WHERE grupo_racial IN ('Branca', 'Negra', 'Indígena')
+ORDER BY ano, sexo, grupo_racial;
+-- 2024 · feminino:  Branca 2,20 · Negra 4,20 (1,91×) · Indígena 10,54 (4,79×)
+-- 2024 · masculino: Branca 17,09 · Negra 50,13 (2,93×) · Indígena 28,47 (1,67×)
+
+-- Recorte livre: mulheres negras de 18 a 29 anos, por UF, em 2024
+SELECT sigla_uf, SUM(obitos) AS obitos,
+       ROUND(SUM(obitos) * 100000.0 / SUM(populacao), 2) AS taxa_100mil
+FROM dw.vw_taxa_sim_uf
+WHERE ano = 2024 AND sexo = 'feminino' AND grupo_racial = 'Negra' AND faixa_etaria = 'idade_18_29'
+GROUP BY sigla_uf
 ORDER BY taxa_100mil DESC;
--- Indígena 5,51 · Negra 2,16 · Branca 1,20 · Amarela 0,22
 ```
+
+### Regras dos KPIs de `vw_kpi_uf`
+
+- **Mortes violentas de mulheres (Sinesp)** = vítimas femininas dos eventos consumados: feminicídio + homicídio doloso + lesão corporal seguida de morte + latrocínio. No Sinesp VDE o feminicídio é registrado **separadamente** do homicídio doloso (em 2.244 dos 2.628 municípios × mês com feminicídio, ele supera o homicídio doloso feminino), por isso os dois são somados.
+- **% de feminicídio entre as mortes violentas** = feminicídios ÷ mortes violentas de mulheres. Mede quanto das mortes de mulheres a polícia qualifica como feminicídio.
+- **Letalidade do feminicídio** = feminicídios ÷ (feminicídios + tentativas). Fica vazia quando a UF não registra tentativas no ano (MS em 2024), para não sugerir 100% de letalidade.
+- **% de óbitos femininos no domicílio (SIM)** = óbitos de mulheres com `local_obito = domicilio` ÷ óbitos de mulheres. Aproximação de feminicídio íntimo.
 
 ## Decisões técnicas
 
 | Decisão | Alternativas consideradas | Justificativa |
 |---|---|---|
 | **Banco relacional (PostgreSQL)** | banco não relacional (ex.: OpenSearch, MongoDB) | Os dados são estruturados e tabulares (contagens por município, mês e categoria), com relacionamentos fixos entre fatos e dimensões. O relacional garante integridade com chaves e `CHECK`s e responde bem às agregações do dashboard (`GROUP BY`, `JOIN`). Não há texto livre nem documentos semiestruturados que justifiquem um banco não relacional. |
-| **Aiven, plano gratuito** | outros provedores de nuvem | Plataforma indicada pela disciplina; PostgreSQL gerenciado sem custo e com provider oficial para Terraform. O limite de 1 GB é suficiente (o schema ocupa ~18 MB). |
+| **Aiven, plano gratuito** | outros provedores de nuvem | Plataforma indicada pela disciplina; PostgreSQL gerenciado sem custo e com provider oficial para Terraform. O limite de 1 GB é suficiente (o schema ocupa ~66 MB). |
 | **Terraform (IaC)** | criar o serviço manualmente no console | A infraestrutura fica versionada e reproduzível; qualquer integrante recria o serviço com `terraform apply`. |
 | **Modelo estrela** | uma tabela única igual ao CSV; modelo totalmente normalizado | A tabela única repetiria a população em todos os meses e exigiria escolher colunas para cada filtro. O modelo totalmente normalizado aumentaria os `JOIN`s sem ganho para consultas analíticas. A estrela é o padrão para leitura analítica e encaixa nos filtros do dashboard. |
 | **Hierarquia município → UF normalizada** | região e UF repetidas em cada município | Permite o drill-down Região → UF → Município com uma única fonte para nome e região de cada UF. |
-| **Fatos separados por raça/cor e por faixa etária** | um fato cruzado raça × faixa | O CSV tratado traz as duas contagens separadas; o cruzamento exigiria mudar o ETL. |
-| **Carga com `COPY` em transação única, recriando o schema** | `INSERT` linha a linha; carga incremental | `COPY` é a forma mais rápida de carga no PostgreSQL; a transação única evita banco carregado pela metade; recriar o schema torna a carga repetível. O volume (~70 mil linhas) não justifica carga incremental. |
+| **Um fato do SIM com sexo × raça/cor × faixa etária × local × meio** | um fato por dimensão (raça e faixa separados) | Fatos separados impediriam os filtros cruzados (raça **e** idade **e** sexo), que são o centro da análise interseccional. O volume continua pequeno (~52 mil linhas). |
+| **População por sexo × raça/cor × faixa etária** | só a população feminina total por raça | Permite taxas no mesmo recorte do numerador (homens, faixas etárias) e o cálculo da razão de risco entre grupos. |
+| **Carga com `COPY` em transação única, recriando o schema** | `INSERT` linha a linha; carga incremental | `COPY` é a forma mais rápida de carga no PostgreSQL; a transação única evita banco carregado pela metade; recriar o schema torna a carga repetível. O volume (~400 mil linhas) não justifica carga incremental. |
 | **psycopg 3 + python-dotenv** | SQLAlchemy | Driver oficial e leve, com suporte direto a `COPY`; o `python-dotenv` lê as credenciais do `.env` sem colocá-las no código. |
 
 ## Infraestrutura (Terraform + Aiven)
@@ -583,7 +619,7 @@ As colunas `pop_fem_*` são atributos do **município**: o mesmo valor se repete
 1. **Nunca somar a população linha a linha.** Somar `pop_fem_total` de 12 meses multiplica a população por 12. Agregue primeiro um valor por município (máximo ou valor distinto) e só depois some.
 2. **Para Brasil, região ou UF, use o denominador completo.** O CSV não traz os municípios sem nenhuma ocorrência no ano (965 em 2024 e 1.080 em 2025, com 2,3% e 2,7% das mulheres), porque essas linhas foram removidas. Para taxas agregadas, use `data/reference/populacao_censo2022.csv` (linhas com `sexo = feminino`, somadas por município) como tabela de dimensão (relacionada por `codigo_ibge`), que tem todos os 5.570 municípios.
 
-No banco, essas duas regras já estão resolvidas: a população fica em `fato_populacao` (uma linha por município × raça/cor, sem repetir por mês) e inclui todos os 5.570 municípios. As regras acima valem para quem usar o CSV diretamente.
+No banco, essas duas regras já estão resolvidas: a população fica em `fato_populacao` (uma linha por município × sexo × raça/cor × faixa etária, sem repetir por mês) e inclui todos os 5.570 municípios; `vw_taxa_sim_uf` já traz numerador e denominador lado a lado. As regras acima valem para quem usar o CSV diretamente.
 
 Fórmula: `taxa por 100 mil = casos / população feminina × 100.000`. Para comparar Sinesp e SIM, restrinja aos meses com `sim_periodo_coberto = True`.
 
@@ -592,14 +628,14 @@ Exemplos com os dados atuais (SIM, denominador completo): em 2024 (ano inteiro),
 ## Limitações
 
 - **Feminicídio × óbito por agressão:** o SIM não tem a categoria feminicídio. O óbito feminino por agressão (X85–Y09) inclui feminicídios e outros homicídios de mulheres, então a comparação com o Sinesp é aproximada e só faz sentido no agregado por município, não vítima a vítima.
-- **SIM 2025 preliminar:** só há óbitos até 02/09/2025, e agosto está incompleto (cerca de metade do volume dos meses anteriores). Comparações entre as bases devem usar `sim_periodo_coberto = True` e considerar a subnotificação de agosto.
+- **SIM 2025 preliminar:** só há óbitos até 02/09/2025, e agosto está incompleto (cerca de metade do volume dos meses anteriores). Comparações entre as bases devem usar `sim_periodo_coberto = True` e considerar a subnotificação de agosto. Pelo mesmo motivo, a taxa anualizada de 2025 (`× 12 / 8`) tende a subestimar o ano.
 - **Residência × ocorrência:** o SIM é relacionado pelo município de **residência** (AI02), enquanto o Sinesp registra o local da ocorrência. Em 21,5% dos óbitos femininos do recorte (2024 e 2025) os dois municípios são diferentes.
 - **Registros descartados por falta de município:** 15 vítimas do Sinesp (município "NÃO INFORMADO") e 520 óbitos do SIM (município de residência ignorado; 28 de mulheres).
 - **Eventos sem detalhe municipal:** Estupro e Estupro de vulnerável existem no Sinesp só por UF e não entram no cruzamento.
 - **Perfil das vítimas:** o detalhamento do SIM preserva sexo, raça/cor, faixa etária, local do óbito e meio da agressão; escolaridade e estado civil não estão nas saídas. O Sinesp não tem raça/cor nem idade, então os cruzamentos interseccionais só são possíveis com o SIM.
 - **Células pequenas:** no detalhamento, muitas combinações têm 1 óbito. Os dados vêm de microdados já públicos e não identificam pessoas, mas painéis e relatórios devem preferir recortes agregados (UF, região, ano) para análise.
 - **Distrito Federal:** o Sinesp traz várias linhas por mês para "BRASÍLIA" (provavelmente uma por região administrativa); elas foram somadas e não é possível separá-las.
-- **População de 2022 para casos de 2024 e 2025:** o Censo 2022 é o dado mais recente com sexo e cor/raça por município; usar 2022 como denominador pode subestimar levemente a população (e superestimar as taxas) em municípios que cresceram. Taxas por faixa etária não são possíveis com o arquivo atual, que traz só a população total por cor/raça.
+- **População de 2022 para casos de 2024 e 2025:** o Censo 2022 é o dado mais recente com sexo e cor/raça por município; usar 2022 como denominador pode subestimar levemente a população (e superestimar as taxas) em municípios que cresceram. 
 - **Municípios pequenos:** com 0, 1 ou 2 casos, taxas e razões oscilam muito; prefira conclusões por UF ou região.
 - **Tabela de municípios:** vem de um repositório público mantido pela comunidade, não diretamente do IBGE. Alguns nomes incluem a denominação alternativa entre parênteses (ex.: "Augusto Severo (Campo Grande)").
 - **Plano gratuito do Aiven:** o serviço é desligado após um período de inatividade e precisa ser religado no console antes da carga ou de qualquer `terraform apply`.
