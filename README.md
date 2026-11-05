@@ -1,19 +1,78 @@
 # Monitoramento de Segurança Pública e Feminicídio Interseccional
 
-Projeto prático da disciplina **Big Data & Analytics** (UCSal) — etapa AI04 (continuação da AI03): tratamento dos dados, modelagem e carga no banco PostgreSQL provisionado no Aiven via Terraform.
+Projeto prático da disciplina **Big Data & Analytics** (UCSal): pipeline de dados públicos de segurança e saúde (ETL em Python), modelagem em estrela e carga em PostgreSQL provisionado no Aiven via Terraform, como base de um dashboard de análise interseccional de **gênero × raça/cor**.
 
 **Grupo:** João Bruno Reis Carvalho dos Santos · Lucas Danilo Santos Araújo · Maria Fernanda Pereira Barcante Costa · Rafael Farias Castro
 
 ## Objetivo
 
-Cruzar, por **município e mês**, os registros policiais de violência letal e de violência contra mulheres (Sinesp/MJSP) com os óbitos de mulheres por agressão registrados no sistema de saúde (SIM/Ministério da Saúde), em 2024 e 2025, permitindo comparar as duas fontes e analisar o perfil racial das vítimas.
+Medir **quem morre por violência no Brasil e onde**, cruzando gênero e raça/cor. O projeto junta, por **município e mês**, os registros policiais de violência letal e de feminicídio (Sinesp/MJSP) com os óbitos por agressão do sistema de saúde (SIM/Ministério da Saúde) e com a população do Censo 2022, em 2024 e 2025. Isso permite responder, com taxas por 100 mil habitantes e não só contagens:
 
-Alinhamento: ODS 5 (Igualdade de Gênero) e ODS 18 (Igualdade Étnico-Racial).
+- se mulheres negras e indígenas morrem mais por agressão do que mulheres brancas, e quanto mais;
+- se essa desigualdade racial entre mulheres é maior ou menor do que entre homens (**gap interseccional**);
+- como as mortes de mulheres diferem das de homens no **local** (domicílio × via pública) e no **meio** (arma de fogo × objeto cortante, força corporal);
+- quanto das mortes violentas de mulheres a polícia qualifica como feminicídio, por UF.
+
+**Alinhamento com os ODS:**
+
+| ODS | Meta | Como o projeto contribui |
+|---|---|---|
+| **ODS 5 — Igualdade de Gênero** | 5.2: eliminar todas as formas de violência contra mulheres e meninas | taxa de feminicídio e de óbitos femininos por agressão por UF e município; % de mortes no domicílio; letalidade do feminicídio; comparação entre o registro policial e o de saúde |
+| **ODS 18 — Igualdade Étnico-Racial** (ODS nacional) | eliminar o racismo e as desigualdades étnico-raciais | taxas por raça/cor com o denominador correto (população do mesmo grupo); razão de risco de pessoas negras e indígenas em relação às brancas, separada por sexo e faixa etária |
 
 ## Visão geral
 
-O ETL lê as duas bases públicas sem modificá-las e gera um único CSV tratado, que é carregado no PostgreSQL (Aiven). Do **Sinesp VDE 2024 e 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2024 e 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam apenas os óbitos de mulheres cuja causa básica foi agressão (CID-10 X85 a Y09). As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV final representa um município em um mês (2024 ou 2025)**, com a região, as vítimas (mulheres e total) de cada evento do Sinesp, os óbitos femininos por agressão do SIM (no total, por raça/cor e por faixa etária) e a população feminina do município segundo o Censo 2022 (total e por raça/cor), que serve de denominador para taxas.
+O ETL lê as bases públicas sem modificá-las e gera dois CSVs tratados, carregados no PostgreSQL (Aiven). Do **Sinesp VDE 2024 e 2025** (Ministério da Justiça), que traz ocorrências policiais mensais por município, ficam seis eventos: feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio. Do **SIM 2024 e 2025** (Ministério da Saúde), em que cada linha é uma declaração de óbito, ficam os óbitos cuja causa básica foi agressão (CID-10 X85 a Y09), de mulheres e de homens. As bases não têm uma chave comum pronta: o Sinesp identifica o município só por UF e nome, enquanto o SIM usa o código IBGE de 6 dígitos do município de residência. O script padroniza o nome do município, obtém o código IBGE por meio de uma tabela de referência e relaciona as bases por **código IBGE + ano + mês**. Como o SIM não registra "feminicídio", o cruzamento é feito por município, e não vítima a vítima: o óbito feminino por agressão serve como aproximação comparada ao que a polícia registrou. **Cada linha do CSV principal representa um município em um mês (2024 ou 2025)**, com a região, as vítimas (mulheres e total) de cada evento do Sinesp, os óbitos femininos por agressão do SIM (no total, por raça/cor e por faixa etária) e a população feminina do município. O **segundo CSV** detalha os óbitos do SIM por sexo × raça/cor × faixa etária × local do óbito × meio da agressão, e a população do Censo 2022 vem com as mesmas dimensões, servindo de denominador para as taxas.
 A infraestrutura do banco (serviço PostgreSQL e banco do projeto no Aiven) é declarada como código em [`terraform/`](terraform/), e as credenciais nunca são versionadas (ver [Segurança](#segurança-e-gerenciamento-de-credenciais)).
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    subgraph fontes["Fontes públicas"]
+        A1["Sinesp VDE<br/>MJSP · .xlsx"]
+        A2["SIM<br/>Ministério da Saúde · .csv"]
+        A3["Censo 2022<br/>API do IBGE · JSON"]
+        A4["Municípios IBGE<br/>.csv"]
+    end
+
+    subgraph etl["ETL em Python (etl/)"]
+        B1["extract.py<br/>leitura; SIM em blocos"]
+        B2["transform_sinesp.py<br/>transform_sim.py"]
+        B3["merge.py<br/>código IBGE + ano + mês"]
+        B4["validate.py<br/>24 verificações"]
+        B5["baixar_populacao.py"]
+    end
+
+    subgraph git["Repositório (GitHub)"]
+        C1["data/processed/<br/>2 CSVs tratados"]
+        C2["data/reference/<br/>população e municípios"]
+    end
+
+    subgraph nuvem["Aiven (provisionado com Terraform)"]
+        D1[("PostgreSQL · schema dw<br/>modelo estrela + views de KPIs")]
+    end
+
+    E1["Dashboard<br/>filtros e KPIs"]
+
+    A1 --> B1
+    A2 --> B1
+    A4 --> B1
+    A3 --> B5 --> C2
+    C2 --> B1
+    B1 --> B2 --> B3 --> B4 --> C1
+    C1 -->|"load.py · COPY<br/>SSL, transação única"| D1
+    D1 -->|"views vw_*"| E1
+```
+
+| Camada | Tecnologia | Papel |
+|---|---|---|
+| Ingestão | Python (pandas, python-calamine, urllib) | Lê as bases brutas sem alterá-las; o SIM é lido em blocos de 200 mil linhas com filtro na leitura, e a população vem da API do IBGE |
+| Processamento | Python (pandas) | Limpeza, padronização de chaves, classificação, agregação e validação; gera CSVs versionados e reprodutíveis |
+| Armazenamento | PostgreSQL no Aiven (plano gratuito) | Modelo estrela com integridade por chaves e `CHECK`s; views prontas para o dashboard |
+| Infraestrutura como código | Terraform (provider `aiven/aiven`) | Cria o serviço PostgreSQL e o banco do projeto de forma reprodutível |
+| Segurança | `.env`, `terraform.tfvars`, SSL | Credenciais fora do Git e conexão criptografada |
+| Visualização | Dashboard (a desenvolver) | Consome as views `vw_*`; filtros e KPIs definidos em [Regras de negócio](#regras-de-negócio) |
 
 ## Bases de dados
 
@@ -35,6 +94,26 @@ A infraestrutura do banco (serviço PostgreSQL e banco do projeto no Aiven) é d
 - **Censo 2022:** população residente por município, sexo e faixa etária, total e por cor/raça (branca, preta, amarela, parda, indígena). As faixas são as mesmas usadas no SIM (0–17, 18–29, 30–39, 40–49, 50–59, 60+). É o dado oficial mais recente com esse detalhamento por município; as estimativas anuais do IBGE trazem só o total.
 
 O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistências) está em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md).
+
+## Conceitos de Big Data
+
+### Os 5 V's no projeto
+
+| V | Como aparece no projeto | Como foi tratado |
+|---|---|---|
+| **Volume** | ~890 MB de dados brutos: 2,46 milhões de declarações de óbito (SIM 2024 e 2025) e 1,6 milhão de linhas do Sinesp. O CSV do SIM 2024 sozinho tem ~530 MB, acima do que convém abrir de uma vez em memória e do limite de 100 MB do GitHub. | Leitura do SIM em blocos (*chunking*) com filtro durante a leitura: só ~60 mil óbitos por agressão ficam em memória. As bases brutas ficam fora do Git, e o resultado são dois CSVs (~9 MB) e um banco de ~66 MB. |
+| **Velocidade** | O Sinesp é atualizado mensalmente; o SIM tem uma base consolidada por ano e versões preliminares atualizadas ao longo do ano seguinte (a de 2025 foi atualizada em 31/08/2026). | Processamento em lote (*batch*), adequado à frequência das fontes. O pipeline é reexecutável de ponta a ponta, e um novo ano ou uma nova versão preliminar entra editando `SINESP_ARQUIVOS`, `SIM_ARQUIVOS` e `SIM_MESES_COBERTOS` em `etl/config.py`. A carga recria o schema numa transação, então pode ser repetida a cada atualização. |
+| **Variedade** | Quatro fontes, três formatos e três codificações: Excel (Sinesp), CSV latin-1 com `;` (SIM), JSON aninhado de API (IBGE) e CSV UTF-8 (municípios). As chaves de município também diferem: UF + nome por extenso (Sinesp), código IBGE de 6 dígitos (SIM) e de 7 dígitos (IBGE). | Um módulo de extração por fonte e padronização das chaves: normalização de nomes (acentos, apóstrofos, hífens), tabela de equivalências para 10 municípios com nome divergente e conversão entre códigos de 6 e 7 dígitos. Tudo converge para um único modelo relacional. |
+| **Veracidade** | Município "NÃO INFORMADO" no Sinesp, municípios de residência ignorados no SIM, raça/cor e idade ignoradas, SIM 2025 preliminar (agosto incompleto), feminicídio registrado separadamente do homicídio doloso, divergência entre município de residência e de ocorrência. | Cada descarte é contado e documentado ([Resultado](#resultado)); categorias "ignoradas" são mantidas como categoria própria, sem imputação; o período coberto do SIM é marcado em `sim_periodo_coberto`; 24 validações no ETL, conferências na carga e `CHECK`s no banco; limitações explícitas em [Limitações](#limitações). |
+| **Valor** | Taxas interseccionais que as fontes, isoladas, não mostram. Em 2024: mulheres negras morreram por agressão a 4,20 por 100 mil, 1,9× a taxa das brancas (2,20), e indígenas a 10,54 (4,8×); 33,7% das mulheres morreram em casa, contra 13,4% dos homens; 27,6% das mulheres foram mortas com objeto cortante, contra 14,8% dos homens; só 37,6% das mortes violentas de mulheres registradas pela polícia foram qualificadas como feminicídio. | Os indicadores estão prontos no banco (`vw_kpi_interseccional`, `vw_kpi_uf`, `vw_taxa_sim_uf`) para orientar políticas de prevenção por território e por grupo (ODS 5 e 18). |
+
+### Tipos de dados
+
+| Tipo | Onde aparece | Tratamento |
+|---|---|---|
+| **Estruturado** | Sinesp (`.xlsx`), SIM (`.csv`), tabela de municípios (`.csv`) e o próprio banco PostgreSQL | Esquema tabular fixo; lido com pandas e convertido para o modelo estrela |
+| **Semiestruturado** | Resposta da API de agregados do IBGE (Censo 2022): JSON aninhado em `resultados → classificacoes → series`, com categorias identificadas por códigos | `etl/baixar_populacao.py` percorre a hierarquia, traduz os códigos de sexo, cor/raça e idade e achata o resultado em um CSV tabular |
+| **Não estruturado** | Não é usado. O dicionário do SIM (PDF) serviu só como documentação para mapear os códigos | Textos livres (boletins de ocorrência, notícias) ficaram fora do escopo: não são públicos de forma padronizada e poderiam conter dados pessoais |
 
 ## Estrutura do repositório
 
@@ -261,7 +340,7 @@ SIM.CODMUNRES (6 díg.) + SIM.DTOBITO ──► ano + mes                       
 
 ## Validação
 
-Antes de gravar o CSV, `etl/validate.py` verifica:
+Antes de gravar os CSVs, `etl/validate.py` executa 24 verificações. Se alguma falhar, nada é gravado. No painel município × mês:
 
 - o resultado não está vazio;
 - a chave `codigo_ibge + ano + mes` é única;
@@ -274,7 +353,14 @@ Antes de gravar o CSV, `etl/validate.py` verifica:
 - todas as linhas têm população, e a população total é ≥ a soma por cor/raça (o total inclui cor/raça ignorada);
 - o total de vítimas do Sinesp e o total de óbitos do SIM são os mesmos antes e depois do relacionamento.
 
-Além disso, cada etapa de transformação confere que as agregações não alteraram os totais.
+No detalhamento do SIM (`sim_obitos_agressao.csv`):
+
+- a chave (município × mês × sexo × raça/cor × faixa × local × meio) é única e não há nulos;
+- todas as categorias pertencem aos domínios previstos em `etl/config.py` e todas as contagens são positivas;
+- só há meses cobertos pelo SIM;
+- o total de óbitos é igual ao de óbitos tratados, e os óbitos femininos são iguais aos do painel em **cada** município × mês.
+
+Além disso, cada etapa de transformação confere que as agregações não alteraram os totais, e a carga (`etl/load.py`) refaz as conferências no banco antes de confirmar a transação.
 
 ## Resultado
 
@@ -538,12 +624,51 @@ GROUP BY sigla_uf
 ORDER BY taxa_100mil DESC;
 ```
 
-### Regras dos KPIs de `vw_kpi_uf`
+## Regras de negócio
 
-- **Mortes violentas de mulheres (Sinesp)** = vítimas femininas dos eventos consumados: feminicídio + homicídio doloso + lesão corporal seguida de morte + latrocínio. No Sinesp VDE o feminicídio é registrado **separadamente** do homicídio doloso (em 2.244 dos 2.628 municípios × mês com feminicídio, ele supera o homicídio doloso feminino), por isso os dois são somados.
-- **% de feminicídio entre as mortes violentas** = feminicídios ÷ mortes violentas de mulheres. Mede quanto das mortes de mulheres a polícia qualifica como feminicídio.
-- **Letalidade do feminicídio** = feminicídios ÷ (feminicídios + tentativas). Fica vazia quando a UF não registra tentativas no ano (MS em 2024), para não sugerir 100% de letalidade.
-- **% de óbitos femininos no domicílio (SIM)** = óbitos de mulheres com `local_obito = domicilio` ÷ óbitos de mulheres. Aproximação de feminicídio íntimo.
+As regras abaixo definem **o que é contado** e **como cada indicador é calculado**. Elas estão implementadas no ETL (`etl/config.py`, `etl/transform_*.py`) e nas views do banco (`sql/schema.sql`), e devem ser seguidas pelo dashboard.
+
+### Recortes
+
+| Regra | Definição |
+|---|---|
+| **RN01 · Eventos do Sinesp** | Feminicídio, tentativa de feminicídio, homicídio doloso, tentativa de homicídio, lesão corporal seguida de morte e latrocínio, registrados por município (filtro `abrangencia = Estadual` da planilha, `SINESP_ABRANGENCIA` em `etl/config.py`). |
+| **RN02 · Óbito por agressão (SIM)** | Causa básica entre X85 e Y09 da CID-10, de ambos os sexos; óbitos com sexo ignorado são excluídos. |
+| **RN03 · Unidade geográfica** | Sinesp: município da ocorrência. SIM: município de **residência** (`CODMUNRES`). Registros sem município identificável são excluídos e contados. |
+| **RN04 · Período** | 2024 (Sinesp e SIM completos) e 2025 (Sinesp completo; SIM só de janeiro a agosto, `sim_periodo_coberto = true`). Comparações entre as fontes usam só os meses cobertos pelo SIM. |
+| **RN05 · Mortes violentas de mulheres (Sinesp)** | Soma das vítimas femininas dos eventos consumados: feminicídio + homicídio doloso + lesão corporal seguida de morte + latrocínio. O Sinesp registra o feminicídio separadamente do homicídio doloso, por isso os dois são somados. |
+
+### Classificações
+
+| Regra | Definição |
+|---|---|
+| **RN06 · Grupo racial** | Negra = preta + parda (padrão do IBGE); branca, amarela e indígena como estão; "ignorada" é mantida como categoria própria e excluída do cálculo de razões entre grupos. |
+| **RN07 · Faixa etária** | 0–17, 18–29, 30–39, 40–49, 50–59, 60+ e ignorada. As mesmas faixas são usadas no SIM e na população, para que o denominador corresponda ao numerador. |
+| **RN08 · Local do óbito** | Domicílio, via pública, estabelecimento de saúde, aldeia indígena, outros e ignorado (`LOCOCOR`). |
+| **RN09 · Meio da agressão** | Derivado do CID: arma de fogo (X93–X95), objeto cortante (X99), objeto contundente (Y00), força corporal (Y04–Y05), enforcamento/sufocação (X91), envenenamento (X85–X90), maus-tratos (Y06–Y07), não especificado (Y09) e outros. |
+
+### Indicadores (KPIs)
+
+| Regra | Indicador | Fórmula | Onde está |
+|---|---|---|---|
+| **RN10** | Taxa por 100 mil habitantes | `SUM(casos) / SUM(população do mesmo recorte) × 100.000`, somando numerador e denominador **antes** de dividir; a população é a do Censo 2022, com os mesmos filtros de sexo, raça/cor e faixa etária | `vw_taxa_sim_uf`, `vw_kpi_uf` |
+| **RN11** | Taxa anualizada | `taxa × 12 / meses cobertos`; necessária para comparar 2025 (8 meses no SIM) com 2024 | `vw_kpi_interseccional` |
+| **RN12** | Taxa de feminicídio | feminicídios (Sinesp) ÷ população feminina × 100.000 | `vw_kpi_uf` |
+| **RN13** | Razão de risco racial | taxa do grupo ÷ taxa do grupo branco **do mesmo sexo e ano** (ex.: 1,91 = 91% mais risco) | `vw_kpi_interseccional` |
+| **RN14** | Gap interseccional | comparação da razão de risco racial entre mulheres e entre homens (em 2024: 1,91× entre mulheres e 2,93× entre homens), complementada pela diferença absoluta de taxas | `vw_kpi_interseccional` |
+| **RN15** | % de óbitos femininos no domicílio | óbitos de mulheres no domicílio ÷ óbitos de mulheres (SIM); aproximação de feminicídio íntimo | `vw_kpi_uf`, `vw_kpi_interseccional` |
+| **RN16** | % de feminicídio entre as mortes violentas de mulheres | feminicídios ÷ mortes violentas de mulheres (RN05) | `vw_kpi_uf` |
+| **RN17** | Letalidade do feminicídio | feminicídios ÷ (feminicídios + tentativas); vazia quando a UF não registra tentativas no ano | `vw_kpi_uf` |
+| **RN18** | Comparativo polícia × saúde | feminicídios e mortes violentas de mulheres (Sinesp) × óbitos femininos por agressão (SIM), por município, nos meses cobertos | `vw_comparativo_sinesp_sim` |
+
+### Regras para o dashboard
+
+| Regra | Definição |
+|---|---|
+| **RN19 · Filtros** | Ano; região → UF → município (*drill-down*); sexo; grupo racial ou raça/cor; faixa etária; local do óbito; meio da agressão; evento do Sinesp. Todos correspondem a colunas das views `vw_*`. |
+| **RN20 · Seletor de métrica** | Contagem absoluta, taxa por 100 mil, taxa anualizada, razão de risco e % do total. |
+| **RN21 · Taxas sempre com a contagem** | Toda taxa é exibida junto com o número absoluto de casos, porque grupos pequenos (ex.: 65 óbitos de mulheres indígenas em 2024) geram taxas instáveis. |
+| **RN22 · Células pequenas** | Em recortes por município, contagens de 1 ou 2 casos são exibidas como "≤ 2", e taxas municipais só são exibidas a partir de 10 casos no recorte (ver [LGPD e ética](#lgpd-e-ética)). |
 
 ## Decisões técnicas
 
@@ -611,6 +736,16 @@ São versionados apenas os modelos `.env.example` e `terraform/terraform.tfvars.
 ### Conexão criptografada (SSL)
 
 O PostgreSQL no Aiven só aceita conexões com SSL. O ETL conecta com `sslmode=require`, garantindo que os dados e as credenciais trafeguem criptografados entre a aplicação e o banco.
+
+## LGPD e ética
+
+- **Origem dos dados:** todas as bases são dados abertos publicados por órgãos públicos (MJSP, Ministério da Saúde e IBGE). Os microdados do SIM já são divulgados sem nome, documento ou endereço das pessoas.
+- **Dados sensíveis:** raça/cor e causa de morte são dados pessoais sensíveis pela LGPD (art. 5º, II: origem racial e dados referentes à saúde). Por isso o projeto **nunca guarda registros individuais**: o SIM é agregado já no ETL, e a data do óbito é reduzida a ano e mês.
+- **Anonimização:** o menor nível de detalhe nas saídas e no banco é uma contagem por município × mês × perfil (sexo, raça/cor, faixa etária, local, meio). Dados anonimizados não são considerados dados pessoais (art. 12), desde que a anonimização não possa ser revertida com esforço razoável.
+- **Risco de reidentificação:** em municípios pequenos, uma contagem de 1 óbito num perfil muito específico pode, combinada com notícias locais, apontar para uma pessoa. Por isso o dashboard deve aplicar a regra de células pequenas (RN22) e privilegiar recortes por UF e região.
+- **Finalidade:** uso acadêmico e de interesse público (prevenção da violência e redução de desigualdades), sem qualquer tentativa de identificar vítimas.
+- **Segurança:** credenciais fora do Git, conexão com o banco só por SSL e acesso ao serviço restrito à conta do grupo no Aiven (ver [Segurança](#segurança-e-gerenciamento-de-credenciais)).
+- **Comunicação responsável:** os resultados descrevem desigualdades entre grupos e não devem ser usados para estigmatizar grupos ou territórios. As limitações das fontes (subnotificação, raça/cor ignorada, SIM preliminar) acompanham os números.
 
 ## Uso da população (taxas)
 
