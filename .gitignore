@@ -1,49 +1,35 @@
-# --- Python ---
+# Arquivos fora do controle de versão: caches do Python, ambientes virtuais, credenciais, state do Terraform e bases brutas.
 __pycache__/
 *.py[cod]
 *.pyc
 *.egg-info/
 .pytest_cache/
 
-# --- Ambientes virtuais ---
 .venv/
 venv/
 env/
 
-# --- Credenciais / variáveis de ambiente (NUNCA versionar) ---
 .env
 .env.*
 !.env.example
 
-# --- Notebooks ---
 .ipynb_checkpoints/
 
-# --- Terraform ---
-# State contém senha e URI do banco em texto puro
 .terraform/
 *.tfstate
 *.tfstate.*
 crash.log
 crash.*.log
-
-# Variáveis com segredos (o terraform.tfvars.example é versionado)
 *.tfvars
 *.tfvars.json
-
-# Overrides locais
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
-# --- Dados ---
-# Bases brutas: grandes demais para o Git (o CSV do SIM tem ~300 MB, acima do
-# limite de 100 MB do GitHub). Devem ser baixadas e colocadas em data/raw/
-# conforme o README.
 data/raw/*
 !data/raw/.gitkeep
 
-# --- IDE / SO ---
 .vscode/
 .idea/
 .DS_Store

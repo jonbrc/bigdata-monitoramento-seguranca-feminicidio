@@ -1,3 +1,4 @@
+# Dependências Python do ETL e da carga no PostgreSQL.
 pandas>=2.2
 openpyxl>=3.1
 python-calamine>=0.2

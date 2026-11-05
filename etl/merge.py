@@ -1,14 +1,4 @@
-"""RELACIONAMENTO — Sinesp × SIM.
-
-Chave:  Sinesp.codigo_ibge (7 dígitos, derivado de UF + nome) → 6 primeiros dígitos
-        + ano + mês
-            ↕
-        SIM.CODMUNRES (6 dígitos) + ano e mês de DTOBITO
-
-Tipo: FULL OUTER JOIN na grade município × mês. A grade do Sinesp já cobre
-todos os municípios em todos os meses; o outer join garante que nenhum óbito
-do SIM se perca caso o município não exista no Sinesp.
-"""
+"""RELACIONAMENTO — junta Sinesp e SIM por município × ano × mês (outer join) e acrescenta atributos de município, UF e população feminina."""
 
 import pandas as pd
 
@@ -31,8 +21,6 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame, municipios: pd.DataFrame
     est["somente_sim"] = int((df["_origem"] == "right_only").sum())
     est["obitos_somente_sim"] = int(df.loc[df["_origem"] == "right_only", "sim_obitos_fem_agressao"].sum())
 
-    # Linhas que só existem no SIM: identificação do município vem da tabela IBGE;
-    # as colunas do Sinesp ficam nulas (sem dado, e não zero).
     if est["somente_sim"]:
         ref = municipios.assign(
             codigo_ibge_6=municipios["codigo_ibge"].map(codigo_ibge_6),
@@ -43,8 +31,6 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame, municipios: pd.DataFrame
         df.loc[so_sim, "uf"] = df.loc[so_sim, "codigo_ibge_6"].map(ref["uf_ref"])
         df.loc[so_sim, "municipio"] = df.loc[so_sim, "codigo_ibge_6"].map(ref["nome"])
 
-    # Cobertura do SIM (base preliminar): nos meses cobertos, ausência de óbito = 0;
-    # nos meses não cobertos, as colunas do SIM ficam nulas (sem dado).
     df["sim_periodo_coberto"] = [
         m in config.SIM_MESES_COBERTOS.get(a, []) for a, m in zip(df["ano"], df["mes"])
     ]
@@ -58,23 +44,17 @@ def relacionar(sinesp: pd.DataFrame, sim: pd.DataFrame, municipios: pd.DataFrame
     for c in cols_sinesp:
         df[c] = df[c].astype("Int64")
 
-    # Remoção de linhas sem ocorrência (AI02, otimização de volume): todas as contagens
-    # das duas bases iguais a zero (ou sem dado).
     soma = df[cols_sinesp].fillna(0).sum(axis=1) + df["sim_obitos_fem_agressao"].fillna(0)
     est["linhas_sem_ocorrencia_removidas"] = int((soma == 0).sum())
     df = df[soma > 0]
 
-    # Região geográfica derivada da UF
     df["regiao"] = df["uf"].map(config.UF_PARA_REGIAO)
 
-    # População feminina (Censo 2022) por código IBGE de 7 dígitos. É um atributo do
-    # município e se repete em todos os meses dele (ver README, "Uso da população").
     cols_pop = [c for c in populacao.columns if c.startswith("pop_fem_")]
     df = df.merge(populacao, on="codigo_ibge", how="left")
     est["linhas_sem_populacao"] = int(df["pop_fem_total"].isna().sum())
     df[cols_pop] = df[cols_pop].astype("Int64")
 
-    # Colunas auxiliares saem; ordem final
     colunas = (["codigo_ibge", "uf", "regiao", "municipio", "ano", "mes"] + cols_sinesp
                + ["sim_periodo_coberto"] + cols_sim + cols_pop)
     df = (df[colunas]

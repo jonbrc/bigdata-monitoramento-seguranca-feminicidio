@@ -1,12 +1,4 @@
-"""Análise exploratória das bases brutas.
-
-Gera docs/analise_exploratoria.md com o perfil de cada base (registros,
-colunas, tipos, nulos, duplicidades, inconsistências, período, chaves) e
-o teste de compatibilidade das chaves de município entre as fontes.
-
-Execução (na raiz do repositório):
-    python -m etl.exploratory_analysis
-"""
+"""Análise exploratória das bases brutas (Sinesp e SIM, por ano) e teste de compatibilidade das chaves de município; gera docs/analise_exploratoria.md."""
 
 import re
 from datetime import datetime
@@ -16,16 +8,10 @@ import pandas as pd
 from etl import config, extract
 from etl.padronizacao import codigo_ibge_6, normalizar_nome
 
-# Sequências típicas de UTF-8 lido como latin-1 ("Ã§", "Ã£", "Ã©"...): "Ã"/"Â"
-# seguidos de um caractere da faixa U+0080–U+00BF. "SÃO" não casa.
 PADRAO_MOJIBAKE = re.compile(r"[ÃÂ][\x80-\xbf]")
 
 
-# ---------------------------------------------------------------------------
-# Utilitários de relatório
-# ---------------------------------------------------------------------------
 def tabela_md(df: pd.DataFrame) -> str:
-    """Renderiza um DataFrame como tabela Markdown (sem dependências extras)."""
     cols = [str(c) for c in df.columns]
     linhas = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for _, row in df.iterrows():
@@ -47,9 +33,6 @@ def perfil_nulos(nulos: pd.Series, total: int, tipos: pd.Series) -> pd.DataFrame
     })
 
 
-# ---------------------------------------------------------------------------
-# Base 1 — Sinesp
-# ---------------------------------------------------------------------------
 def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
     print("Lendo Sinesp VDE...")
     df = extract.ler_sinesp_ano(ano)
@@ -66,7 +49,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Período
     datas = pd.to_datetime(df["data_referencia"], errors="coerce")
     out += [
         "### Período",
@@ -77,7 +59,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Eventos
     medidas = ["feminino", "masculino", "nao_informado", "total_vitima", "total"]
     ev = df.groupby("evento").agg(
         registros=("uf", "size"),
@@ -104,7 +85,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Valores numéricos
     neg = {c: int((df[c] < 0).sum()) for c in medidas}
     frac = {c: int(((df[c].dropna() % 1) != 0).sum()) for c in medidas}
     out += [
@@ -117,14 +97,12 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Duplicidades
     chave = ["uf", "municipio", "evento", "data_referencia", "agente", "arma",
              "faixa_etaria", "abrangencia"]
     dup_chave = df.duplicated(chave, keep=False)
     dup_mun = (df[dup_chave].groupby(["uf", "municipio"]).size()
                .sort_values(ascending=False).reset_index(name="linhas"))
     dup_mun["linhas"] = dup_mun["linhas"].map(fmt)
-    # Ex.: quantas linhas por mês/evento o município mais duplicado tem
     exemplo = ""
     if len(dup_mun):
         uf0, mun0 = dup_mun.iloc[0]["uf"], dup_mun.iloc[0]["municipio"]
@@ -148,7 +126,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Municípios
     pares = df[["uf", "municipio"]].drop_duplicates()
     pares_validos = pares[pares.municipio != "NÃO INFORMADO"].copy()
     nomes_rep = pares_validos.municipio.duplicated(keep=False)
@@ -173,7 +150,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Compatibilidade com a tabela IBGE
     ref = municipios.copy()
     ref["uf"] = ref["codigo_uf"].map(config.UF_CODIGO_PARA_SIGLA)
     ref["chave_nome"] = ref["nome"].map(normalizar_nome)
@@ -199,9 +175,6 @@ def analisar_sinesp(municipios: pd.DataFrame, ano: int) -> list[str]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Base 2 — SIM
-# ---------------------------------------------------------------------------
 def analisar_sim(municipios: pd.DataFrame, ano: int) -> list[str]:
     print("Lendo SIM em blocos...")
     total = 0
@@ -291,7 +264,6 @@ def analisar_sim(municipios: pd.DataFrame, ano: int) -> list[str]:
         "",
     ]
 
-    # Subconjunto do tema
     n_sub = len(sub)
     cid = sub["CAUSABAS"].str[:3].value_counts()
     ibge6 = set(municipios["codigo_ibge"].map(codigo_ibge_6))
@@ -336,7 +308,6 @@ def analisar_sim(municipios: pd.DataFrame, ano: int) -> list[str]:
     return out
 
 
-# ---------------------------------------------------------------------------
 def main() -> None:
     municipios = extract.ler_municipios()
     linhas = [

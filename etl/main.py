@@ -1,8 +1,4 @@
-"""Pipeline completo: EXTRAÇÃO → TRANSFORMAÇÃO → RELACIONAMENTO → VALIDAÇÃO → CARGA (CSV).
-
-Execução (na raiz do repositório):
-    python -m etl.main
-"""
+"""Orquestra o ETL completo (extração → transformação → relacionamento → validação) e grava os CSVs tratados em data/processed/."""
 
 import sys
 import time
@@ -26,7 +22,6 @@ def main() -> int:
     print(f"ETL — Monitoramento de Segurança Pública e Feminicídio ({'-'.join(map(str, config.ANOS))})")
     print("=" * 64)
 
-    # EXTRAÇÃO + TRANSFORMAÇÃO
     municipios = extract.ler_municipios()
     print("\n[1/4] Sinesp: lendo e tratando...")
     sinesp, est_sinesp = tratar_sinesp(extract.ler_sinesp(), municipios)
@@ -36,7 +31,6 @@ def main() -> int:
     sim, sim_detalhado, est_sim = ler_e_tratar_sim(municipios)
     print(resumo_sim(est_sim))
 
-    # RELACIONAMENTO
     print("\n[3/4] Relacionando Sinesp × SIM (código IBGE 6 dígitos + ano + mês)...")
     final, est_rel = relacionar(sinesp, sim, municipios, extract.ler_populacao())
     print("Relacionamento:")
@@ -47,7 +41,6 @@ def main() -> int:
     print(f"  Linhas sem ocorrência removidas: {fmt(est_rel['linhas_sem_ocorrencia_removidas'])}")
     print(f"  Linhas sem população (Censo 2022): {fmt(est_rel['linhas_sem_populacao'])}")
 
-    # VALIDAÇÃO
     print("\n[4/4] Validando...")
     checks = validar(final, est_sinesp, est_sim, est_rel) + validar_detalhamento(sim_detalhado, final, est_sim)
     for descricao, ok in checks:
@@ -56,7 +49,6 @@ def main() -> int:
         print("\nValidação falhou: o CSV não foi gerado.")
         return 1
 
-    # CARGA
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     final.to_csv(config.OUTPUT_FILE, index=False, sep=config.OUTPUT_SEPARATOR,
                  encoding=config.OUTPUT_ENCODING)

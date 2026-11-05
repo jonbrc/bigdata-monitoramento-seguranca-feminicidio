@@ -1,12 +1,14 @@
+# Variáveis de entrada do Terraform: token da API e projeto do Aiven, e nome do banco.
+
 variable "aiven_api_token" {
-    description = "token para autenticação da API do Aiven"
-    type = string
-    sensitive = true
+  description = "Token para autenticação da API do Aiven"
+  type        = string
+  sensitive   = true
 }
 
 variable "aiven_project_name" {
-  description = "nome do projeto criado no aiven"
-  type = string
+  description = "Nome do projeto criado no Aiven"
+  type        = string
 }
 
 variable "pg_database_name" {

@@ -1,8 +1,4 @@
-"""EXTRAÇÃO — leitura das bases brutas.
-
-Este módulo só lê os arquivos de data/raw e data/reference; nunca grava
-nada neles.
-"""
+"""EXTRAÇÃO — leitura das bases brutas (Sinesp por ano, SIM em blocos) e das tabelas de referência do IBGE, sem gravar nada em data/."""
 
 from collections.abc import Callable, Iterator
 
@@ -20,9 +16,6 @@ def _verificar_arquivo(caminho) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Base 1 — Sinesp VDE
-# ---------------------------------------------------------------------------
 def ler_sinesp_ano(ano: int) -> pd.DataFrame:
     arquivo = config.SINESP_ARQUIVOS[ano]
     _verificar_arquivo(arquivo)
@@ -33,16 +26,7 @@ def ler_sinesp() -> pd.DataFrame:
     return pd.concat([ler_sinesp_ano(ano) for ano in config.ANOS], ignore_index=True)
 
 
-# ---------------------------------------------------------------------------
-# Base 2 — SIM
-# ---------------------------------------------------------------------------
 def iterar_sim(ano: int, usecols: list[str] | None = None) -> Iterator[pd.DataFrame]:
-    """Lê o CSV do SIM em blocos.
-
-    Todas as colunas entram como texto: os campos do SIM são códigos
-    (ex.: CODESTAB "0000655", datas "ddmmaaaa") e a conversão numérica
-    automática perderia zeros à esquerda. A tipagem é feita na transformação.
-    """
     arquivo = config.SIM_ARQUIVOS[ano]
     _verificar_arquivo(arquivo)
     yield from pd.read_csv(
@@ -60,11 +44,6 @@ def ler_sim_filtrado(
     filtro: Callable[[pd.DataFrame], pd.Series],
     usecols: list[str] | None = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Lê o SIM em blocos aplicando `filtro` durante a leitura.
-
-    Retorna (registros filtrados, total de registros lidos). Só o subconjunto
-    filtrado fica em memória, como previsto na AI02.
-    """
     partes, total = [], 0
     for bloco in iterar_sim(ano, usecols):
         total += len(bloco)
@@ -78,7 +57,6 @@ def filtro_agressao(df: pd.DataFrame) -> pd.Series:
 
 
 def filtro_feminino_agressao(df: pd.DataFrame) -> pd.Series:
-    """Recorte da AI02: SEXO feminino e CAUSABAS entre X85 e Y09."""
     cid3 = df["CAUSABAS"].str.replace("*", "", regex=False).str.strip().str[:3]
     return (
         (df["SEXO"] == config.SIM_SEXO_FEMININO)
@@ -87,9 +65,6 @@ def filtro_feminino_agressao(df: pd.DataFrame) -> pd.Series:
     )
 
 
-# ---------------------------------------------------------------------------
-# Referência — municípios IBGE
-# ---------------------------------------------------------------------------
 def ler_populacao_detalhada() -> pd.DataFrame:
     _verificar_arquivo(config.POPULACAO_FILE)
     return pd.read_csv(config.POPULACAO_FILE, dtype={"codigo_ibge": str})
@@ -103,7 +78,6 @@ def ler_populacao() -> pd.DataFrame:
 
 
 def ler_municipios() -> pd.DataFrame:
-    """Lê a tabela de municípios com código IBGE de 7 dígitos."""
     _verificar_arquivo(config.MUNICIPIOS_FILE)
     return pd.read_csv(
         config.MUNICIPIOS_FILE,

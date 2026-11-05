@@ -1,3 +1,5 @@
+# Provisiona no Aiven o serviço PostgreSQL (plano gratuito) e o banco do projeto.
+
 terraform {
   required_providers {
     aiven = {

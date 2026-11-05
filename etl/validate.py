@@ -1,8 +1,4 @@
-"""VALIDAÇÃO — verificações sobre o resultado final antes da gravação.
-
-Cada verificação devolve (descrição, ok). Se alguma falhar, o ETL é
-interrompido e o CSV não é gravado.
-"""
+"""VALIDAÇÃO — verificações do painel e do detalhamento do SIM (chave, nulos, domínios e totais); se alguma falhar, nada é gravado."""
 
 import pandas as pd
 
