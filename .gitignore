@@ -12,6 +12,7 @@ env/
 .env
 .env.*
 !.env.example
+**/.streamlit/secrets.toml
 
 .ipynb_checkpoints/
 

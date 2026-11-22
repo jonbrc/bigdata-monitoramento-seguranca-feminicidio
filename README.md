@@ -53,7 +53,7 @@ flowchart LR
         D1[("PostgreSQL · schema dw<br/>modelo estrela + views de KPIs")]
     end
 
-    E1["Dashboard<br/>filtros e KPIs"]
+    E1["Dashboard Streamlit<br/>filtros e KPIs"]
 
     A1 --> B1
     A2 --> B1
@@ -72,7 +72,7 @@ flowchart LR
 | Armazenamento | PostgreSQL no Aiven (plano gratuito) | Modelo estrela com integridade por chaves e `CHECK`s; views prontas para o dashboard |
 | Infraestrutura como código | Terraform (provider `aiven/aiven`) | Cria o serviço PostgreSQL e o banco do projeto de forma reprodutível |
 | Segurança | `.env`, `terraform.tfvars`, SSL | Credenciais fora do Git e conexão criptografada |
-| Visualização | Dashboard (a desenvolver) | Consome as views `vw_*`; filtros e KPIs definidos em [Regras de negócio](#regras-de-negócio) |
+| Visualização | Streamlit (pasta `dashboard/`), publicado no Streamlit Community Cloud | Consome as views `vw_*` com conexão somente leitura; filtros e KPIs definidos em [Regras de negócio](#regras-de-negócio) |
 
 ## Bases de dados
 
@@ -127,6 +127,11 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   └── processed/
 │       ├── violencia_feminicidio_municipio_mes.csv   # painel município × mês (versionado)
 │       └── sim_obitos_agressao.csv                   # SIM detalhado por sexo, raça/cor, idade, local e meio (versionado)
+├── dashboard/
+│   ├── app.py                    # aplicação Streamlit (ponto de entrada)
+│   ├── db.py                     # conexão somente leitura e consultas com cache
+│   ├── requirements.txt          # dependências do dashboard (usadas no deploy)
+│   └── secrets.toml.example      # modelo dos Secrets do Streamlit Cloud (versionado, sem valores)
 ├── docs/
 │   └── analise_exploratoria.md   # gerado por etl/exploratory_analysis.py
 ├── etl/
@@ -259,6 +264,17 @@ python -m etl.load --dry-run
 ```
 
 Resultado esperado: `dim_municipio` 5.571 · `dim_tempo` 24 · `fato_ocorrencia_sinesp` 64.428 · `fato_obito_sim` 52.243 · `fato_populacao` 276.501 linhas.
+
+### 7. Rodar o dashboard localmente
+
+O dashboard (Streamlit) lê as views do schema `dw` e usa as mesmas credenciais do `.env` da raiz, então não precisa de configuração extra para rodar na máquina:
+
+```bash
+pip install -r dashboard/requirements.txt
+streamlit run dashboard/app.py
+```
+
+Abre em `http://localhost:8501`. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
 
 ## Fluxo do ETL
 
@@ -730,8 +746,9 @@ A variável `aiven_api_token` é marcada como `sensitive`, e as URIs de conexão
 | `terraform/terraform.tfvars` | token da API do Aiven |
 | `terraform/*.tfstate` | o state guarda a senha e a URI do banco em texto puro |
 | `terraform/.terraform/` | plugins baixados pelo `terraform init` |
+| `.streamlit/secrets.toml` (em qualquer pasta) | credenciais do banco usadas pelo dashboard, se configuradas localmente |
 
-São versionados apenas os modelos `.env.example` e `terraform/terraform.tfvars.example`, além do `terraform/.terraform.lock.hcl`, que não contém segredos e garante a mesma versão do provider para todo o grupo.
+São versionados apenas os modelos `.env.example`, `terraform/terraform.tfvars.example` e `dashboard/secrets.toml.example`, além do `terraform/.terraform.lock.hcl`, que não contém segredos e garante a mesma versão do provider para todo o grupo.
 
 ### Conexão criptografada (SSL)
 
