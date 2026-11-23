@@ -3,6 +3,7 @@
 import streamlit as st
 
 import db
+import filtros
 
 st.set_page_config(
     page_title="Feminicídio e Violência Interseccional",
@@ -12,7 +13,23 @@ st.set_page_config(
 
 
 def formatar(n) -> str:
-    return f"{int(n):,}".replace(",", ".")
+    return f"{int(n or 0):,}".replace(",", ".")
+
+
+def falhar(erro: Exception) -> None:
+    if isinstance(erro, db.ConfiguracaoAusente):
+        st.error(
+            f"Credenciais do banco não encontradas ({erro}). Preencha o `.env` na raiz do projeto "
+            "ou os Secrets do Streamlit (modelo em `dashboard/secrets.toml.example`)."
+        )
+    else:
+        st.error(
+            "Não foi possível consultar o banco. No plano gratuito do Aiven o serviço é desligado após "
+            "um período sem uso: confira no console se ele está **Running** e recarregue a página."
+        )
+        with st.expander("Detalhes técnicos"):
+            st.code(str(erro))
+    st.stop()
 
 
 st.title("Violência letal e feminicídio no Brasil")
@@ -22,40 +39,64 @@ st.caption(
 )
 
 try:
-    resumo = db.consultar("""
-        SELECT (SELECT SUM(vitimas_total) FROM fato_ocorrencia_sinesp) AS vitimas_sinesp,
-               (SELECT SUM(obitos)        FROM fato_obito_sim)         AS obitos_sim,
-               (SELECT SUM(populacao)     FROM fato_populacao)         AS populacao,
-               (SELECT COUNT(DISTINCT codigo_ibge) FROM dim_municipio) AS municipios,
-               (SELECT STRING_AGG(DISTINCT ano::text, ', ' ORDER BY ano::text) FROM dim_tempo) AS anos
-    """)
-except db.ConfiguracaoAusente as erro:
-    st.error(
-        f"Credenciais do banco não encontradas ({erro}). Preencha o `.env` na raiz do projeto "
-        "ou os Secrets do Streamlit (modelo em `dashboard/secrets.toml.example`)."
-    )
-    st.stop()
+    opcoes = filtros.carregar_opcoes()
 except Exception as erro:
-    st.error(
-        "Não foi possível consultar o banco. No plano gratuito do Aiven o serviço é desligado após "
-        "um período sem uso: confira no console se ele está **Running** e recarregue a página."
+    falhar(erro)
+
+f = filtros.barra_lateral(opcoes)
+st.markdown(f"**Recorte:** {f.resumo(opcoes)}")
+
+if f.sim_parcial:
+    st.warning(
+        f"O SIM de {f.ano} é preliminar e cobre só {f.meses_sim} meses (janeiro a "
+        f"{['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][f.meses_sim]}). "
+        "Os números do SIM não são comparáveis diretamente com os de um ano completo; "
+        "use as taxas anualizadas.",
+        icon="⚠️",
     )
-    with st.expander("Detalhes técnicos"):
-        st.code(str(erro))
+
+where_sim, params_sim = f.where()
+where_sinesp, params_sinesp = f.where(perfil=False)
+try:
+    sim = db.consultar(
+        f"SELECT COALESCE(SUM(obitos), 0) AS obitos, COALESCE(SUM(populacao), 0) AS populacao "
+        f"FROM vw_taxa_sim_uf WHERE {where_sim}", tuple(params_sim)).iloc[0]
+    municipios = db.consultar(
+        f"SELECT COUNT(DISTINCT codigo_ibge) AS n FROM vw_sim WHERE {where_sim}", tuple(params_sim)).iloc[0]
+    sinesp = db.consultar(
+        f"SELECT COALESCE(SUM(feminicidios), 0) AS feminicidios, "
+        f"COALESCE(SUM(mortes_violentas_fem), 0) AS mortes_violentas_fem "
+        f"FROM vw_kpi_uf WHERE {where_sinesp}", tuple(params_sinesp)).iloc[0]
+except Exception as erro:
+    falhar(erro)
+
+if sim["populacao"] == 0 and sim["obitos"] == 0:
+    st.info(
+        "Nenhum dado para essa combinação de filtros. Amplie o recorte (por exemplo, remova uma "
+        "faixa etária ou um grupo racial) ou use **Limpar filtros** na barra lateral.",
+        icon="🔍",
+    )
     st.stop()
 
-r = resumo.iloc[0]
-st.subheader("Base de dados carregada")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Vítimas registradas (Sinesp)", formatar(r["vitimas_sinesp"]))
-c2.metric("Óbitos por agressão (SIM)", formatar(r["obitos_sim"]))
-c3.metric("População (Censo 2022)", formatar(r["populacao"]))
-c4.metric("Municípios", formatar(r["municipios"]))
-st.caption(f"Anos disponíveis: {r['anos']}. Os filtros e indicadores são adicionados nas próximas etapas.")
+st.subheader("Registros de saúde (SIM)")
+c1, c2, c3 = st.columns(3)
+c1.metric("Óbitos por agressão", formatar(sim["obitos"]))
+c2.metric("População do recorte (Censo 2022)", formatar(sim["populacao"]))
+c3.metric("Municípios com óbito", formatar(municipios["n"]))
+
+st.subheader("Registros policiais (Sinesp)")
+c1, c2, _ = st.columns(3)
+c1.metric("Feminicídios", formatar(sinesp["feminicidios"]))
+c2.metric("Mortes violentas de mulheres", formatar(sinesp["mortes_violentas_fem"]),
+          help="Feminicídio + homicídio doloso + lesão corporal seguida de morte + latrocínio (RN05).")
+if f.sexo != "todos" or f.grupos or f.faixas:
+    st.caption("O Sinesp não traz raça/cor nem idade: estes números seguem só os filtros de ano e território.")
+
+st.caption("Os indicadores (taxas, razões de risco e percentuais) são adicionados nas próximas etapas.")
 
 with st.sidebar:
-    st.header("Sobre")
-    st.markdown(
-        "Painel do projeto prático de **Big Data & Analytics** (UCSal).\n\n"
-        "Os dados vêm do PostgreSQL no Aiven (schema `dw`), carregado pelo ETL do repositório."
+    st.divider()
+    st.caption(
+        "Painel do projeto prático de **Big Data & Analytics** (UCSal). Dados do PostgreSQL no Aiven "
+        "(schema `dw`), carregado pelo ETL do repositório."
     )

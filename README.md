@@ -130,6 +130,7 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 ├── dashboard/
 │   ├── app.py                    # aplicação Streamlit (ponto de entrada)
 │   ├── db.py                     # conexão somente leitura e consultas com cache
+│   ├── filtros.py                # filtros cruzados da barra lateral, persistência na URL e WHERE parametrizado
 │   ├── requirements.txt          # dependências do dashboard (usadas no deploy)
 │   └── secrets.toml.example      # modelo dos Secrets do Streamlit Cloud (versionado, sem valores)
 ├── docs/
@@ -274,7 +275,7 @@ pip install -r dashboard/requirements.txt
 streamlit run dashboard/app.py
 ```
 
-Abre em `http://localhost:8501`. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
+Abre em `http://localhost:8501`. Os filtros (ano, região → UF, sexo, raça/cor e faixa etária) ficam gravados na URL, então um link copiado do navegador abre o painel no mesmo recorte. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
 
 ## Fluxo do ETL
 
