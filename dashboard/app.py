@@ -4,16 +4,13 @@ import streamlit as st
 
 import db
 import filtros
+import kpis
 
 st.set_page_config(
     page_title="Feminicídio e Violência Interseccional",
     page_icon="📊",
     layout="wide",
 )
-
-
-def formatar(n) -> str:
-    return f"{int(n or 0):,}".replace(",", ".")
 
 
 def falhar(erro: Exception) -> None:
@@ -46,27 +43,21 @@ except Exception as erro:
 f = filtros.barra_lateral(opcoes)
 st.markdown(f"**Recorte:** {f.resumo(opcoes)}")
 
+MESES = ["", "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
+         "setembro", "outubro", "novembro", "dezembro"]
 if f.sim_parcial:
     st.warning(
-        f"O SIM de {f.ano} é preliminar e cobre só {f.meses_sim} meses (janeiro a "
-        f"{['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][f.meses_sim]}). "
-        "Os números do SIM não são comparáveis diretamente com os de um ano completo; "
-        "use as taxas anualizadas.",
+        f"O SIM de {f.ano} é preliminar e cobre só janeiro a {MESES[f.meses_sim]}. As taxas do SIM são "
+        f"anualizadas (× 12 ÷ {f.meses_sim}), mas o último mês ainda está incompleto: a comparação com o "
+        "ano anterior tende a subestimar o ano corrente.",
         icon="⚠️",
     )
 
 where_sim, params_sim = f.where()
-where_sinesp, params_sinesp = f.where(perfil=False)
 try:
     sim = db.consultar(
         f"SELECT COALESCE(SUM(obitos), 0) AS obitos, COALESCE(SUM(populacao), 0) AS populacao "
         f"FROM vw_taxa_sim_uf WHERE {where_sim}", tuple(params_sim)).iloc[0]
-    municipios = db.consultar(
-        f"SELECT COUNT(DISTINCT codigo_ibge) AS n FROM vw_sim WHERE {where_sim}", tuple(params_sim)).iloc[0]
-    sinesp = db.consultar(
-        f"SELECT COALESCE(SUM(feminicidios), 0) AS feminicidios, "
-        f"COALESCE(SUM(mortes_violentas_fem), 0) AS mortes_violentas_fem "
-        f"FROM vw_kpi_uf WHERE {where_sinesp}", tuple(params_sinesp)).iloc[0]
 except Exception as erro:
     falhar(erro)
 
@@ -78,21 +69,38 @@ if sim["populacao"] == 0 and sim["obitos"] == 0:
     )
     st.stop()
 
-st.subheader("Registros de saúde (SIM)")
-c1, c2, c3 = st.columns(3)
-c1.metric("Óbitos por agressão", formatar(sim["obitos"]))
-c2.metric("População do recorte (Censo 2022)", formatar(sim["populacao"]))
-c3.metric("Municípios com óbito", formatar(municipios["n"]))
+try:
+    interseccionais, policiais = kpis.calcular(f, opcoes.anos)
+except Exception as erro:
+    falhar(erro)
 
-st.subheader("Registros policiais (Sinesp)")
-c1, c2, _ = st.columns(3)
-c1.metric("Feminicídios", formatar(sinesp["feminicidios"]))
-c2.metric("Mortes violentas de mulheres", formatar(sinesp["mortes_violentas_fem"]),
-          help="Feminicídio + homicídio doloso + lesão corporal seguida de morte + latrocínio (RN05).")
+
+CSS_CARTOES = """
+<style>
+[data-testid="stMetricLabel"] p, [data-testid="stMetricLabel"] div { white-space: normal !important; }
+[data-testid="stMetricValue"] { font-size: clamp(1.15rem, 2.2vw, 2.1rem); }
+[data-testid="stMetricValue"] div { overflow: visible !important; text-overflow: clip !important; }
+</style>
+"""
+st.markdown(CSS_CARTOES, unsafe_allow_html=True)
+
+
+def cartoes(lista: list[kpis.Kpi], larguras: list[float] | None = None) -> None:
+    for coluna, k in zip(st.columns(larguras or len(lista)), lista):
+        with coluna.container(border=True):
+            st.metric(k.titulo, k.valor, delta=k.delta, delta_color=k.delta_cor, help=k.ajuda)
+            st.caption(k.legenda)
+            if k.alerta:
+                st.caption(f":orange[⚠️ {k.alerta}]")
+
+
+st.subheader("Gênero × raça/cor · óbitos por agressão (SIM)")
+cartoes(interseccionais, [1, 1, 1.25, 1])
+
+st.subheader("Feminicídio · registros policiais (Sinesp)")
+cartoes(policiais)
 if f.sexo != "todos" or f.grupos or f.faixas:
-    st.caption("O Sinesp não traz raça/cor nem idade: estes números seguem só os filtros de ano e território.")
-
-st.caption("Os indicadores (taxas, razões de risco e percentuais) são adicionados nas próximas etapas.")
+    st.caption("O Sinesp não traz raça/cor nem idade: estes indicadores seguem só os filtros de ano e território.")
 
 with st.sidebar:
     st.divider()

@@ -46,14 +46,15 @@ class Filtros:
     def sim_parcial(self) -> bool:
         return self.meses_sim < 12
 
-    def where(self, colunas: dict[str, str] | None = None, perfil: bool = True) -> tuple[str, list]:
+    def where(self, colunas: dict[str, str] | None = None, perfil: bool = True,
+              ano: int | None = None, ignorar: tuple[str, ...] = ()) -> tuple[str, list]:
         c = {"ano": "ano", "regiao": "regiao", "uf": "sigla_uf", "sexo": "sexo",
              "grupo": "grupo_racial", "faixa": "faixa_etaria", **(colunas or {})}
-        partes, params = [f"{c['ano']} = %s"], [self.ano]
+        partes, params = [f"{c['ano']} = %s"], [ano or self.ano]
         filtros = [("regiao", self.regioes), ("uf", self.ufs)]
         if perfil:
-            filtros += [("grupo", self.grupos), ("faixa", self.faixas)]
-            if self.sexo != "todos":
+            filtros += [(k, v) for k, v in (("grupo", self.grupos), ("faixa", self.faixas)) if k not in ignorar]
+            if self.sexo != "todos" and "sexo" not in ignorar:
                 partes.append(f"{c['sexo']} = %s")
                 params.append(self.sexo)
         for chave, valores in filtros:
