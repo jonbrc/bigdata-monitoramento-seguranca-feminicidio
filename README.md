@@ -131,6 +131,7 @@ O perfil completo das bases brutas (nulos, duplicidades, períodos, inconsistên
 │   ├── app.py                    # aplicação Streamlit (ponto de entrada)
 │   ├── db.py                     # conexão somente leitura e consultas com cache
 │   ├── filtros.py                # filtros cruzados da barra lateral, persistência na URL e WHERE parametrizado
+│   ├── graficos.py               # gráfico interseccional com seletor de métrica e de eixo, e tabela de apoio
 │   ├── kpis.py                   # cálculo dos KPIs (RN10–RN17), variação anual e alerta de estimativa instável
 │   ├── requirements.txt          # dependências do dashboard (usadas no deploy)
 │   └── secrets.toml.example      # modelo dos Secrets do Streamlit Cloud (versionado, sem valores)
@@ -276,7 +277,7 @@ pip install -r dashboard/requirements.txt
 streamlit run dashboard/app.py
 ```
 
-Abre em `http://localhost:8501`. O painel mostra sete KPIs em cartões, que reagem aos filtros: taxa de óbitos por agressão, risco racial em relação ao grupo branco, gap interseccional (mulheres × homens), % de óbitos no domicílio, taxa de feminicídio, % de mortes violentas de mulheres tipificadas como feminicídio e letalidade do feminicídio. Cada cartão traz o número absoluto de casos (RN21), a variação em relação ao ano anterior e um aviso quando há menos de 10 casos. Os filtros (ano, região → UF, sexo, raça/cor e faixa etária) ficam gravados na URL, então um link copiado do navegador abre o painel no mesmo recorte. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
+Abre em `http://localhost:8501`. O painel mostra sete KPIs em cartões, que reagem aos filtros: taxa de óbitos por agressão, risco racial em relação ao grupo branco, gap interseccional (mulheres × homens), % de óbitos no domicílio, taxa de feminicídio, % de mortes violentas de mulheres tipificadas como feminicídio e letalidade do feminicídio. Cada cartão traz o número absoluto de casos (RN21), a variação em relação ao ano anterior e um aviso quando há menos de 10 casos. Abaixo deles, o **gráfico interseccional** tem dois seletores: a métrica (taxa por 100 mil, risco em relação ao grupo branco, número de óbitos ou % do total, RN20) e o eixo de comparação (raça/cor, sexo ou faixa etária). As barras com menos de 10 óbitos aparecem hachuradas, e a tabela com os números do gráfico pode ser baixada em CSV. Os filtros (ano, região → UF, sexo, raça/cor e faixa etária) ficam gravados na URL, então um link copiado do navegador abre o painel no mesmo recorte. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
 
 ## Fluxo do ETL
 

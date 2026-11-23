@@ -4,6 +4,7 @@ import streamlit as st
 
 import db
 import filtros
+import graficos
 import kpis
 
 st.set_page_config(
@@ -101,6 +102,12 @@ st.subheader("Feminicídio · registros policiais (Sinesp)")
 cartoes(policiais)
 if f.sexo != "todos" or f.grupos or f.faixas:
     st.caption("O Sinesp não traz raça/cor nem idade: estes indicadores seguem só os filtros de ano e território.")
+
+st.subheader("Comparativo interseccional · óbitos por agressão (SIM)")
+try:
+    graficos.render(f)
+except Exception as erro:
+    falhar(erro)
 
 with st.sidebar:
     st.divider()
