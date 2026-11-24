@@ -205,7 +205,7 @@ def calcular(f: Filtros, anos: dict[int, int]) -> tuple[list[Kpi], list[Kpi]]:
     k_let = Kpi(
         titulo="Letalidade do feminicídio",
         valor=f"{numero(letal(sin), 1)}%" if letal(sin) is not None else "—",
-        legenda=f"Feminicídios ÷ (feminicídios + tentativas)"
+        legenda="Feminicídios ÷ (feminicídios + tentativas)"
                 + (f" · {sem} UF sem registro de tentativas fora do cálculo" if sem else ""),
         ajuda="Proporção das tentativas que terminaram em morte (RN17). UFs que não registram tentativas "
               "no ano ficam de fora, para não sugerir 100% de letalidade.",

@@ -50,7 +50,9 @@ class Filtros:
               ano: int | None = None, ignorar: tuple[str, ...] = ()) -> tuple[str, list]:
         c = {"ano": "ano", "regiao": "regiao", "uf": "sigla_uf", "sexo": "sexo",
              "grupo": "grupo_racial", "faixa": "faixa_etaria", **(colunas or {})}
-        partes, params = [f"{c['ano']} = %s"], [ano or self.ano]
+        partes, params = ["TRUE"], []
+        if "ano" not in ignorar:
+            partes, params = [f"{c['ano']} = %s"], [ano or self.ano]
         filtros = [("regiao", self.regioes), ("uf", self.ufs)]
         if perfil:
             filtros += [(k, v) for k, v in (("grupo", self.grupos), ("faixa", self.faixas)) if k not in ignorar]

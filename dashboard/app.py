@@ -6,6 +6,7 @@ import db
 import filtros
 import graficos
 import kpis
+import territorio
 
 st.set_page_config(
     page_title="Feminicídio e Violência Interseccional",
@@ -106,6 +107,12 @@ if f.sexo != "todos" or f.grupos or f.faixas:
 st.subheader("Comparativo interseccional · óbitos por agressão (SIM)")
 try:
     graficos.render(f)
+except Exception as erro:
+    falhar(erro)
+
+st.subheader("Território")
+try:
+    territorio.render(f, opcoes)
 except Exception as erro:
     falhar(erro)
 
