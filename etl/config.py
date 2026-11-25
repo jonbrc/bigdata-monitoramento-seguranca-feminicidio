@@ -1,35 +1,20 @@
-"""Configuração centralizada do ETL.
-
-Todos os caminhos, nomes de arquivo, encodings e parâmetros de tratamento
-ficam aqui. Os demais módulos importam deste arquivo e não definem caminhos
-próprios. Os caminhos são relativos à raiz do repositório, então o processo
-roda em qualquer máquina sem editar o código.
-"""
+"""Configuração central do ETL: caminhos, bases por ano, recortes temáticos, mapeamentos de categorias e parâmetros de saída e do banco."""
 
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Diretórios
-# ---------------------------------------------------------------------------
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
-RAW_DIR = DATA_DIR / "raw"              # bases brutas (somente leitura)
-REFERENCE_DIR = DATA_DIR / "reference"  # tabelas auxiliares versionadas
-PROCESSED_DIR = DATA_DIR / "processed"  # saída do ETL
+RAW_DIR = DATA_DIR / "raw"
+REFERENCE_DIR = DATA_DIR / "reference"
+PROCESSED_DIR = DATA_DIR / "processed"
 DOCS_DIR = ROOT_DIR / "docs"
 
-# ---------------------------------------------------------------------------
-# Base 1 — Sinesp VDE 2025 (MJSP)
-# ---------------------------------------------------------------------------
-SINESP_FILE = RAW_DIR / "BancoVDE 2025 (1).xlsx"
-SINESP_SHEET = "2025"
-# O motor "calamine" lê o .xlsx ~7x mais rápido que o openpyxl (≈15 s vs ≈110 s).
+SINESP_ARQUIVOS = {
+    2024: RAW_DIR / "BancoVDE 2024.xlsx",
+    2025: RAW_DIR / "BancoVDE 2025 (1).xlsx",
+}
 SINESP_EXCEL_ENGINE = "calamine"
 
-# Recorte temático (AI02: "violência letal e violência contra mulheres").
-# Só eventos registrados por município; Estupro e Estupro de vulnerável ficam
-# de fora porque a base só os traz agregados por UF (município "NÃO INFORMADO").
-# Valor = sufixo usado nos nomes das colunas do CSV final.
 SINESP_EVENTOS = {
     "Feminicídio": "feminicidio",
     "Tentativa de feminicídio": "tentativa_feminicidio",
@@ -41,44 +26,37 @@ SINESP_EVENTOS = {
 SINESP_ABRANGENCIA = "Estadual"
 SINESP_MUNICIPIO_NAO_INFORMADO = "NÃO INFORMADO"
 
-# Grafias do Sinesp que não batem com o nome oficial do IBGE mesmo após a
-# normalização (nome antigo ou variante). (UF, nome no Sinesp) -> código IBGE.
 SINESP_MUNICIPIOS_EQUIVALENCIAS = {
-    ("BA", "MUQUÉM DO SÃO FRANCISCO"): "2922250",  # Muquém de São Francisco
-    ("BA", "SANTA TEREZINHA"): "2928505",          # Santa Teresinha
-    ("MG", "DONA EUZÉBIA"): "3122900",             # Dona Eusébia
-    ("MG", "SÃO TOMÉ DAS LETRAS"): "3165206",      # São Thomé das Letras
-    ("PE", "SÃO CAITANO"): "2613107",              # São Caetano
-    ("RN", "CAMPO GRANDE"): "2401305",             # Augusto Severo (Campo Grande)
-    ("RN", "JANUÁRIO CICCO"): "2405306",           # Januário Cicco (Boa Saúde)
-    ("SE", "AMPARO DO SÃO FRANCISCO"): "2800100",  # Amparo de São Francisco
-    ("SP", "FLORÍNEA"): "3516101",                 # Florínia
-    ("TO", "TABOCÃO"): "1708254",                  # Fortaleza do Tabocão
+    ("BA", "MUQUÉM DO SÃO FRANCISCO"): "2922250",
+    ("BA", "SANTA TEREZINHA"): "2928505",
+    ("MG", "DONA EUZÉBIA"): "3122900",
+    ("MG", "SÃO TOMÉ DAS LETRAS"): "3165206",
+    ("PE", "SÃO CAITANO"): "2613107",
+    ("RN", "CAMPO GRANDE"): "2401305",
+    ("RN", "JANUÁRIO CICCO"): "2405306",
+    ("SE", "AMPARO DO SÃO FRANCISCO"): "2800100",
+    ("SP", "FLORÍNEA"): "3516101",
+    ("TO", "TABOCÃO"): "1708254",
 }
 
-# ---------------------------------------------------------------------------
-# Base 2 — SIM 2025 preliminar (Ministério da Saúde)
-# ---------------------------------------------------------------------------
-SIM_FILE = RAW_DIR / "Mortalidade_Geral_2025.csv"
+SIM_ARQUIVOS = {
+    2024: RAW_DIR / "Mortalidade_Geral_2024.csv",
+    2025: RAW_DIR / "Mortalidade_Geral_2025.csv",
+}
 SIM_SEPARATOR = ";"
 SIM_ENCODING = "latin-1"
-SIM_CHUNKSIZE = 200_000  # leitura em blocos (Pandas chunking)
+SIM_CHUNKSIZE = 200_000
 
-# Colunas do SIM mapeadas na AI02 (itens 4 — base de dados 2).
 SIM_COLUNAS_AI02 = [
     "DTOBITO", "SEXO", "CAUSABAS", "CODMUNRES", "CODMUNOCOR", "RACACOR",
     "IDADE", "ESTCIV", "ESC2010", "LOCOCOR", "CODESTAB", "NATURAL",
     "CODMUNNATU", "TIPOBITO",
 ]
 
-# Recorte definido na AI02: óbitos de mulheres (SEXO = 2) cuja causa básica
-# seja agressão, CID-10 X85 a Y09. A comparação usa os 3 primeiros caracteres
-# do CID (categoria), em ordem lexicográfica: X85..X99, Y00..Y09.
 SIM_SEXO_FEMININO = "2"
 SIM_CID_AGRESSAO_INICIO = "X85"
 SIM_CID_AGRESSAO_FIM = "Y09"
 
-# Raça/cor do SIM (dicionário de dados do SIM). Ausente ou fora da lista -> "raca_ignorada".
 SIM_RACACOR = {
     "1": "branca",
     "2": "preta",
@@ -88,8 +66,33 @@ SIM_RACACOR = {
 }
 SIM_RACACOR_IGNORADA = "raca_ignorada"
 
-# Faixas etárias para as contagens do SIM: (idade mínima, idade máxima ou None, sufixo).
-# 0–17 = menores de idade (ECA); 60+ = pessoas idosas (Estatuto da Pessoa Idosa).
+SIM_SEXO = {"1": "masculino", "2": "feminino"}
+
+SIM_LOCAL_OBITO = {
+    "1": "estabelecimento_saude",
+    "2": "estabelecimento_saude",
+    "3": "domicilio",
+    "4": "via_publica",
+    "5": "outros",
+    "6": "aldeia_indigena",
+}
+SIM_LOCAL_IGNORADO = "local_ignorado"
+
+SIM_MEIO_AGRESSAO = {
+    **{f"X{n}": "envenenamento" for n in range(85, 91)},
+    "X91": "enforcamento_sufocacao",
+    "X92": "outros",
+    "X93": "arma_fogo", "X94": "arma_fogo", "X95": "arma_fogo",
+    "X96": "outros", "X97": "outros", "X98": "outros",
+    "X99": "objeto_cortante",
+    "Y00": "objeto_contundente",
+    "Y01": "outros", "Y02": "outros", "Y03": "outros",
+    "Y04": "forca_corporal", "Y05": "forca_corporal",
+    "Y06": "maus_tratos", "Y07": "maus_tratos",
+    "Y08": "outros",
+    "Y09": "meio_nao_especificado",
+}
+
 SIM_FAIXAS_ETARIAS = [
     (0, 17, "idade_0_17"),
     (18, 29, "idade_18_29"),
@@ -100,21 +103,15 @@ SIM_FAIXAS_ETARIAS = [
 ]
 SIM_FAIXA_IGNORADA = "idade_ignorada"
 
-# Base preliminar: há óbitos só até 02/09/2025 e agosto está incompleto
-# (~metade do volume dos meses anteriores). Meses de 2025 considerados cobertos:
-SIM_ANO = 2025
-SIM_MESES_COBERTOS = list(range(1, 9))  # janeiro a agosto
+SIM_MESES_COBERTOS = {
+    2024: list(range(1, 13)),
+    2025: list(range(1, 9)),
+}
+ANOS = sorted(SINESP_ARQUIVOS)
 
-# ---------------------------------------------------------------------------
-# Tabela de referência — municípios com código IBGE
-# ---------------------------------------------------------------------------
-# A base do Sinesp identifica o município apenas por UF + nome; o SIM usa o
-# código IBGE. Esta tabela faz a ponte entre os dois (ver README).
-# Fonte: https://github.com/kelvins/municipios-brasileiros (csv/municipios.csv)
 MUNICIPIOS_FILE = REFERENCE_DIR / "municipios_ibge.csv"
 MUNICIPIOS_ENCODING = "utf-8"
 
-# Código numérico da UF (2 primeiros dígitos do código IBGE) -> sigla
 UF_CODIGO_PARA_SIGLA = {
     11: "RO", 12: "AC", 13: "AM", 14: "RR", 15: "PA", 16: "AP", 17: "TO",
     21: "MA", 22: "PI", 23: "CE", 24: "RN", 25: "PB", 26: "PE", 27: "AL",
@@ -124,7 +121,6 @@ UF_CODIGO_PARA_SIGLA = {
     50: "MS", 51: "MT", 52: "GO", 53: "DF",
 }
 
-# Região geográfica de cada UF
 UF_PARA_REGIAO = {
     "AC": "Norte", "AM": "Norte", "AP": "Norte", "PA": "Norte", "RO": "Norte",
     "RR": "Norte", "TO": "Norte",
@@ -136,44 +132,41 @@ UF_PARA_REGIAO = {
     "DF": "Centro-Oeste", "GO": "Centro-Oeste", "MS": "Centro-Oeste", "MT": "Centro-Oeste",
 }
 
-# ---------------------------------------------------------------------------
-# Tabela de referência — população feminina (IBGE, Censo Demográfico 2022)
-# ---------------------------------------------------------------------------
-# Tabela SIDRA 9606 (população residente por cor ou raça, sexo e idade), sexo =
-# Mulheres, idade = Total, todas as categorias de cor ou raça, nível município.
-# Gerada por `python -m etl.baixar_populacao`. É o dado oficial mais recente com
-# população por sexo e cor/raça no nível municipal (as estimativas anuais do IBGE
-# não têm esse detalhamento).
-POPULACAO_FILE = REFERENCE_DIR / "populacao_feminina_censo2022.csv"
-POPULACAO_SIDRA_URL = (
-    "https://apisidra.ibge.gov.br/values/t/9606/n6/all/v/93/p/2022"
-    "/c2/5/c86/all/c287/100362/f/c/h/n"
+POPULACAO_FILE = REFERENCE_DIR / "populacao_censo2022.csv"
+POPULACAO_API_URL = (
+    "https://servicodados.ibge.gov.br/api/v3/agregados/9606/periodos/2022/variaveis/93"
+    "?localidades=N6[N3[{uf}]]&classificacao=2[{sexos}]|86[all]|287[{idades}]"
 )
-# Código SIDRA da categoria de cor ou raça -> sufixo da coluna
-POPULACAO_SIDRA_CORES = {
-    "95251": "total",   # inclui cor/raça ignorada
+POPULACAO_API_SEXOS = {"4": "masculino", "5": "feminino"}
+POPULACAO_API_CORES = {
+    "95251": "total",
     "2776": "branca",
     "2777": "preta",
     "2778": "amarela",
     "2779": "parda",
     "2780": "indigena",
 }
+POPULACAO_API_IDADES = {
+    "93070": "idade_0_17", "93084": "idade_0_17", "93085": "idade_0_17",
+    "6572": "idade_0_17", "6573": "idade_0_17", "6574": "idade_0_17",
+    "6575": "idade_18_29", "6576": "idade_18_29", "93087": "idade_18_29", "93088": "idade_18_29",
+    "93089": "idade_30_39", "93090": "idade_30_39",
+    "93091": "idade_40_49", "93092": "idade_40_49",
+    "93093": "idade_50_59", "93094": "idade_50_59",
+    "93095": "idade_60_mais", "93096": "idade_60_mais", "93097": "idade_60_mais",
+    "93098": "idade_60_mais", "49108": "idade_60_mais", "49109": "idade_60_mais",
+    "60040": "idade_60_mais", "60041": "idade_60_mais", "6653": "idade_60_mais",
+}
+POPULACAO_API_UFS_GRANDES = {31, 35}
 
-# ---------------------------------------------------------------------------
-# Saída
-# ---------------------------------------------------------------------------
-OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes_2025.csv"
+OUTPUT_FILE = PROCESSED_DIR / "violencia_feminicidio_municipio_mes.csv"
+OUTPUT_SIM_FILE = PROCESSED_DIR / "sim_obitos_agressao.csv"
 OUTPUT_SEPARATOR = ","
 OUTPUT_ENCODING = "utf-8"
 EDA_REPORT_FILE = DOCS_DIR / "analise_exploratoria.md"
 
-# ---------------------------------------------------------------------------
-# Carga no PostgreSQL (Aiven) — `python -m etl.load`
-# ---------------------------------------------------------------------------
-# As credenciais NÃO ficam aqui: vêm de variáveis de ambiente, lidas do arquivo
-# .env na raiz (ignorado pelo Git). Modelo: .env.example.
 SCHEMA_SQL_FILE = ROOT_DIR / "sql" / "schema.sql"
 DB_SCHEMA = "dw"
 ENV_FILE = ROOT_DIR / ".env"
 DB_ENV_OBRIGATORIAS = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
-DB_SSLMODE_PADRAO = "require"  # o Aiven só aceita conexões com SSL
+DB_SSLMODE_PADRAO = "require"

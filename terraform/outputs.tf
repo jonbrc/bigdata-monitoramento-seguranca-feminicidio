@@ -1,3 +1,5 @@
+# Saídas do Terraform: host, porta, nome do banco e URIs de conexão (sensíveis).
+
 output "pg_host" {
   description = "Host do serviço PostgreSQL"
   value       = aiven_pg.postgresql.service_host
