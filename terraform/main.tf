@@ -6,6 +6,10 @@ terraform {
       source  = "aiven/aiven"
       version = "~> 4.62"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -28,8 +32,15 @@ resource "aiven_pg_database" "projeto" {
   database_name = var.pg_database_name
 }
 
+# A API do Aiven devolve a senha gerada por ele como "<redacted>", então a senha é definida aqui.
+resource "random_password" "dashboard" {
+  length  = 32
+  special = false
+}
+
 resource "aiven_pg_user" "dashboard" {
   project      = aiven_pg.postgresql.project
   service_name = aiven_pg.postgresql.service_name
   username     = var.dashboard_username
+  password     = random_password.dashboard.result
 }
