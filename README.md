@@ -280,6 +280,45 @@ streamlit run dashboard/app.py
 
 Abre em `http://localhost:8501`. O painel mostra sete KPIs em cartões, que reagem aos filtros: taxa de óbitos por agressão, risco racial em relação ao grupo branco, gap interseccional (mulheres × homens), % de óbitos no domicílio, taxa de feminicídio, % de mortes violentas de mulheres tipificadas como feminicídio e letalidade do feminicídio. Cada cartão traz o número absoluto de casos (RN21), a variação em relação ao ano anterior e um aviso quando há menos de 10 casos. Abaixo deles, o **gráfico interseccional** tem dois seletores: a métrica (taxa por 100 mil, risco em relação ao grupo branco, número de óbitos ou % do total, RN20) e o eixo de comparação (raça/cor, sexo ou faixa etária). As barras com menos de 10 óbitos aparecem hachuradas, e a tabela com os números do gráfico pode ser baixada em CSV. A seção **Território** faz o *drill-down* Brasil → região → UF → município: clicar numa barra (ou num ponto do mapa) aprofunda o nível e atualiza os filtros da página inteira, e a trilha no topo da seção volta aos níveis anteriores. No nível de município, a regra de células pequenas (RN22) é aplicada já na consulta SQL, então contagens de 1 ou 2 casos e taxas com menos de 10 casos nunca chegam ao navegador. O mapa usa o fundo `carto-positron`, carregado da internet pelo navegador. Os filtros (ano, região → UF, sexo, raça/cor e faixa etária) ficam gravados na URL, então um link copiado do navegador abre o painel no mesmo recorte. A conexão do dashboard é **somente leitura** (`default_transaction_read_only`), e as consultas ficam em cache por 1 hora. No deploy, as credenciais vêm dos Secrets do Streamlit Community Cloud (modelo em [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example)).
 
+
+### 8. Publicar o dashboard (Streamlit Community Cloud)
+
+O painel online roda no [Streamlit Community Cloud](https://share.streamlit.io), lendo o banco no Aiven com um **usuário só de leitura** (`dashboard_leitura`), criado pelo Terraform.
+
+**1. Criar o usuário do dashboard e conceder a leitura** (uma vez, com o serviço do Aiven ligado):
+
+```bash
+cd terraform
+terraform apply                          # cria o usuário dashboard_leitura (além do serviço e do banco)
+terraform output -raw dashboard_senha    # senha do usuário, para os Secrets do Streamlit
+terraform output pg_host                 # host
+terraform output pg_port                 # porta
+cd ..
+python -m etl.load                       # recria o schema e concede SELECT ao dashboard_leitura
+```
+
+A carga confirma no final: *"Permissão de leitura no schema 'dw' concedida ao usuário 'dashboard_leitura'"*. As permissões ficam no fim do `sql/schema.sql` e são concedidas de novo a cada carga, já que o schema é recriado. Esse usuário só consegue ler o schema `dw`: inserir, apagar, criar ou remover objetos é recusado pelo próprio banco.
+
+**2. Criar o app** em [share.streamlit.io](https://share.streamlit.io), com a conta do GitHub que tem acesso ao repositório:
+
+1. **Create app** → *Yup, I have an app*;
+2. **Repository:** este repositório; **Branch:** a branch publicada (de preferência a `main`); **Main file path:** `dashboard/app.py`;
+3. **App URL:** um subdomínio em `streamlit.app` (pode ser alterado depois);
+4. **Advanced settings:** Python **3.12** e, em **Secrets**, o conteúdo de [`dashboard/secrets.toml.example`](dashboard/secrets.toml.example) preenchido com host, porta, `DB_USER = "dashboard_leitura"` e a senha do passo 1;
+5. **Deploy**. O Community Cloud instala as dependências de `dashboard/requirements.txt`, pois procura primeiro a pasta do arquivo principal.
+
+**3. Atualizações:** cada push na branch publicada atualiza o app automaticamente. Os Secrets podem ser alterados depois nas configurações do app, sem novo deploy.
+
+**Problemas comuns**
+
+| Sintoma | Causa e solução |
+|---|---|
+| "Não foi possível consultar o banco" | O serviço do Aiven (plano gratuito) desliga após um período sem uso. Ligue-o no console do Aiven (**Power on**) e recarregue a página. |
+| "Credenciais do banco não encontradas" | Faltam chaves nos Secrets do app. Confira os nomes (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`). |
+| `permission denied` | A carga foi feita antes de o usuário existir. Rode `python -m etl.load` de novo. |
+| "This app has gone to sleep" | Apps gratuitos hibernam sem acesso. Clique em acordar e aguarde cerca de um minuto; antes de uma apresentação, abra o link com antecedência. |
+| Mapa sem fundo | O fundo do mapa (`carto-positron`) é carregado da internet pelo navegador; confira a conexão ou bloqueios de rede. |
+
 ## Fluxo do ETL
 
 ```text
@@ -712,6 +751,7 @@ O banco é provisionado como código em `terraform/`, usando o provider oficial 
 |---|---|
 | `aiven_pg.postgresql` | Serviço PostgreSQL `db-seguranca-publica` (plano `free-1-1gb`, nuvem `do-nyc`) |
 | `aiven_pg_database.projeto` | Banco do projeto, `seguranca_publica` por padrão (variável `pg_database_name`) |
+| `aiven_pg_user.dashboard` | Usuário só de leitura do dashboard, `dashboard_leitura` por padrão (variável `dashboard_username`); a senha é gerada pelo Aiven e as permissões vêm do `sql/schema.sql` |
 
 | Output | Sensível | Uso |
 |---|---|---|
@@ -720,8 +760,10 @@ O banco é provisionado como código em `terraform/`, usando o provider oficial 
 | `pg_database` | não | nome do banco do projeto |
 | `pg_uri` | sim | URI de conexão apontando para o `defaultdb` |
 | `pg_database_uri` | sim | URI de conexão apontando para o banco do projeto |
+| `dashboard_usuario` | não | usuário do dashboard |
+| `dashboard_senha` | sim | senha do usuário do dashboard (para os Secrets do Streamlit) |
 
-Outputs sensíveis não aparecem no terminal; para ler: `terraform output -raw pg_database_uri`.
+Outputs sensíveis não aparecem no terminal; para ler: `terraform output -raw pg_database_uri` ou `terraform output -raw dashboard_senha`.
 
 **State:** o state do Terraform é local (`terraform/terraform.tfstate`) e não é versionado. Somente quem tem esse arquivo consegue gerenciar a infraestrutura existente; sem ele, o Terraform tentaria criar o serviço novamente.
 
@@ -742,6 +784,10 @@ O token da API do Aiven e o nome do projeto são variáveis do Terraform, inform
 
 A variável `aiven_api_token` é marcada como `sensitive`, e as URIs de conexão são outputs sensíveis.
 
+### Dashboard → Secrets do Streamlit Community Cloud
+
+O dashboard (`dashboard/db.py`) lê as mesmas chaves `DB_*` dos **Secrets** do Streamlit Community Cloud; na máquina local, usa o `.env` da raiz. Ele se conecta com o usuário **`dashboard_leitura`**, criado pelo Terraform (`aiven_pg_user`), que só tem `USAGE` no schema `dw` e `SELECT` nas tabelas e views, concedidos pelo `sql/schema.sql`. Além disso, toda conexão do dashboard abre com `default_transaction_read_only=on`. Assim, mesmo que a senha do painel vaze, ela não permite alterar ou apagar dados. A senha é gerada pelo Aiven e fica só no state do Terraform e nos Secrets do app.
+
 ### O que nunca é versionado
 
 | Arquivo | Motivo |
@@ -756,7 +802,7 @@ São versionados apenas os modelos `.env.example`, `terraform/terraform.tfvars.e
 
 ### Conexão criptografada (SSL)
 
-O PostgreSQL no Aiven só aceita conexões com SSL. O ETL conecta com `sslmode=require`, garantindo que os dados e as credenciais trafeguem criptografados entre a aplicação e o banco.
+O PostgreSQL no Aiven só aceita conexões com SSL. O ETL e o dashboard conectam com `sslmode=require`, garantindo que os dados e as credenciais trafeguem criptografados entre a aplicação e o banco.
 
 ## LGPD e ética
 

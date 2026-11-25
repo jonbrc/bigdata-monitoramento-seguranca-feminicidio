@@ -1,4 +1,4 @@
--- Schema "dw" (PostgreSQL / Aiven) em modelo estrela: dimensões, fatos do Sinesp, do SIM e da população do Censo 2022, e views de KPIs para o dashboard. Recriado do zero a cada carga (etl/load.py).
+-- Schema "dw" (PostgreSQL / Aiven) em modelo estrela: dimensões, fatos do Sinesp, do SIM e da população do Censo 2022, views de KPIs para o dashboard e permissão de leitura ao usuário do dashboard. Recriado do zero a cada carga (etl/load.py).
 
 DROP SCHEMA IF EXISTS dw CASCADE;
 CREATE SCHEMA dw;
@@ -377,3 +377,11 @@ JOIN dim_municipio m ON m.codigo_ibge = k.codigo_ibge
 JOIN dim_uf u USING (sigla_uf)
 LEFT JOIN s ON s.ano = k.ano AND s.codigo_ibge = k.codigo_ibge
 LEFT JOIN o ON o.ano = k.ano AND o.codigo_ibge = k.codigo_ibge;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard_leitura') THEN
+        GRANT USAGE ON SCHEMA dw TO dashboard_leitura;
+        GRANT SELECT ON ALL TABLES IN SCHEMA dw TO dashboard_leitura;
+    END IF;
+END $$;

@@ -144,8 +144,13 @@ def _trilha(f: Filtros, opcoes: Opcoes) -> None:
     for i, (rotulo, destino) in enumerate(passos):
         atual = i == len(passos) - 1
         colunas[i].button(("› " if i else "") + rotulo, key=f"trilha_{i}", disabled=atual,
-                          type="secondary", use_container_width=True,
+                          type="secondary", width="stretch",
                           on_click=_ir_para, args=destino)
+
+
+def _cores_barras(d: pd.DataFrame, indicador: str):
+    cores = [COR_SUPRIMIDO if (indicador in SUPRIMIDO and r[SUPRIMIDO[indicador]]) else COR for _, r in d.iterrows()]
+    return cores[0] if len(set(cores)) == 1 else cores
 
 
 def _barras(df: pd.DataFrame, indicador: str, rotulo: str) -> go.Figure:
@@ -157,8 +162,7 @@ def _barras(df: pd.DataFrame, indicador: str, rotulo: str) -> go.Figure:
         customdata=list(zip(d["chave"], [_texto(indicador, r) for _, r in d.iterrows()],
                             [_texto(CONTAGEM[indicador], r) for _, r in d.iterrows()])),
         text=[_texto(indicador, r) for _, r in d.iterrows()], textposition="outside", cliponaxis=False,
-        marker=dict(color=[COR_SUPRIMIDO if (indicador in SUPRIMIDO and r[SUPRIMIDO[indicador]]) else COR
-                           for _, r in d.iterrows()],
+        marker=dict(color=_cores_barras(d, indicador),
                     cornerradius=4,
                     pattern=dict(shape=["/" if _instavel(indicador, r) else "" for _, r in d.iterrows()],
                                  fillmode="overlay", fgcolor="rgba(255,255,255,0.9)", size=6, solidity=0.4)),
@@ -255,22 +259,22 @@ def render(f: Filtros, opcoes: Opcoes) -> None:
         st.markdown(f"**{titulo}**")
         chave_barras = f"barras_{nivel_atual}_{indicador}_{recorte}"
         if alvo_clique:
-            st.plotly_chart(_barras(ranking, indicador, rotulo), use_container_width=True,
+            st.plotly_chart(_barras(ranking, indicador, rotulo), width="stretch",
                             key=chave_barras, on_select=partial(_ao_clicar, chave_barras, alvo_clique, opcoes),
                             selection_mode="points", config={"displayModeBar": False})
         else:
-            st.plotly_chart(_barras(ranking, indicador, rotulo), use_container_width=True,
+            st.plotly_chart(_barras(ranking, indicador, rotulo), width="stretch",
                             key=chave_barras, config={"displayModeBar": False})
     with c2:
         st.markdown("**Mapa**" + (" · clique numa UF para aprofundar" if nivel_atual != "municipio" else ""))
         chave_mapa = f"mapa_{nivel_atual}_{indicador}_{recorte}"
         figura_mapa = _mapa(mapa_df, indicador, rotulo, nivel_atual)
         if nivel_atual != "municipio":
-            st.plotly_chart(figura_mapa, use_container_width=True, key=chave_mapa,
+            st.plotly_chart(figura_mapa, width="stretch", key=chave_mapa,
                             on_select=partial(_ao_clicar, chave_mapa, "sigla_uf", opcoes), selection_mode="points",
                             config={"displaylogo": False, "scrollZoom": True})
         else:
-            st.plotly_chart(figura_mapa, use_container_width=True, key=chave_mapa,
+            st.plotly_chart(figura_mapa, width="stretch", key=chave_mapa,
                             config={"displaylogo": False, "scrollZoom": True})
 
     notas = []

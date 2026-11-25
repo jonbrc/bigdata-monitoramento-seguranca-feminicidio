@@ -193,7 +193,7 @@ def barra_lateral(opcoes: Opcoes) -> Filtros:
             "Os dados do Sinesp seguem apenas os filtros de ano e território."
         )
 
-        st.button("Limpar filtros", on_click=_limpar, args=(opcoes,), use_container_width=True,
+        st.button("Limpar filtros", on_click=_limpar, args=(opcoes,), width="stretch",
                   disabled=all(st.session_state[CHAVES[n]] == v for n, v in padroes.items()))
 
     estado = {"ano": ano, "regiao": regioes, "uf": ufs, "sexo": sexo, "raca": grupos, "faixa": faixas}

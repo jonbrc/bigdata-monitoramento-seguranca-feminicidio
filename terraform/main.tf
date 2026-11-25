@@ -1,4 +1,4 @@
-# Provisiona no Aiven o serviço PostgreSQL (plano gratuito) e o banco do projeto.
+# Provisiona no Aiven o serviço PostgreSQL (plano gratuito), o banco do projeto e o usuário só leitura do dashboard.
 
 terraform {
   required_providers {
@@ -26,4 +26,10 @@ resource "aiven_pg_database" "projeto" {
   project       = aiven_pg.postgresql.project
   service_name  = aiven_pg.postgresql.service_name
   database_name = var.pg_database_name
+}
+
+resource "aiven_pg_user" "dashboard" {
+  project      = aiven_pg.postgresql.project
+  service_name = aiven_pg.postgresql.service_name
+  username     = var.dashboard_username
 }

@@ -168,7 +168,7 @@ def render(f: Filtros) -> None:
         st.info(f"Sem dados para esta métrica no recorte selecionado.{motivo}", icon="🔍")
         return
 
-    st.plotly_chart(figura(t, x, serie, metrica, f, faixas), use_container_width=True,
+    st.plotly_chart(figura(t, x, serie, metrica, f, faixas), width="stretch",
                     config={"displaylogo": False, "locale": "pt-BR"})
     notas = []
     if t["instavel"].any():
@@ -187,7 +187,7 @@ def render(f: Filtros) -> None:
     with st.expander("Ver tabela"):
         tab = tabela(t, x, serie, faixas)
         st.dataframe(
-            tab, hide_index=True, use_container_width=True,
+            tab, hide_index=True, width="stretch",
             column_config={
                 "Óbitos": st.column_config.NumberColumn(format="localized"),
                 "População": st.column_config.NumberColumn(format="localized"),

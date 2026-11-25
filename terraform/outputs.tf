@@ -1,4 +1,4 @@
-# Saídas do Terraform: host, porta, nome do banco e URIs de conexão (sensíveis).
+# Saídas do Terraform: host, porta, nome do banco, URIs de conexão e credenciais do usuário do dashboard (sensíveis).
 
 output "pg_host" {
   description = "Host do serviço PostgreSQL"
@@ -24,5 +24,16 @@ output "pg_uri" {
 output "pg_database_uri" {
   description = "URI de conexão apontando para o banco do projeto"
   value       = replace(aiven_pg.postgresql.service_uri, "/defaultdb", "/${aiven_pg_database.projeto.database_name}")
+  sensitive   = true
+}
+
+output "dashboard_usuario" {
+  description = "Usuário só leitura do dashboard"
+  value       = aiven_pg_user.dashboard.username
+}
+
+output "dashboard_senha" {
+  description = "Senha do usuário do dashboard (use em DB_PASSWORD nos Secrets do Streamlit)"
+  value       = aiven_pg_user.dashboard.password
   sensitive   = true
 }
