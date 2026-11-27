@@ -24,6 +24,7 @@ COLUNAS = {
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto",
          "Setembro", "Outubro", "Novembro", "Dezembro"]
 ANO_CENSO = 2022
+USUARIO_DASHBOARD = "dashboard_leitura"
 
 IDS_SEXO = {"masculino": 1, "feminino": 2}
 IDS_LOCAL = {"domicilio": 1, "via_publica": 2, "estabelecimento_saude": 3,
@@ -227,8 +228,16 @@ def carregar(tabelas: dict[str, pd.DataFrame]) -> None:
                            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                            WHERE n.nspname = %s""", (esquema,))
             tamanho = cur.fetchone()[0]
+
+            cur.execute("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)", (USUARIO_DASHBOARD,))
+            leitura = cur.fetchone()[0]
     print(f"\n  No banco: {fmt(no_banco[0])} vítimas (Sinesp) · {fmt(no_banco[1])} óbitos (SIM) · "
           f"{fmt(no_banco[2])} pessoas (Censo 2022) · tamanho do schema: {tamanho}")
+    if leitura:
+        print(f"  Permissão de leitura no schema '{esquema}' concedida ao usuário '{USUARIO_DASHBOARD}'.")
+    else:
+        print(f"  Aviso: o usuário '{USUARIO_DASHBOARD}' não existe. Crie-o com `terraform apply` e repita a carga "
+              "para o dashboard poder usar um acesso só de leitura.")
 
 
 def main() -> int:

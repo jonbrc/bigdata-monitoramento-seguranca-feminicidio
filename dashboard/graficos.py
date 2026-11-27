@@ -7,6 +7,7 @@ import streamlit as st
 import db
 from filtros import Filtros
 from kpis import MINIMO_ESTAVEL, numero
+from layout import cartao
 
 CORES_GRUPO = {"Branca": "#2a78d6", "Negra": "#eb6834", "Indígena": "#1baf7a",
                "Amarela": "#eda100", "Ignorada": "#9b9a95"}
@@ -15,12 +16,12 @@ ORDEM_GRUPO = list(CORES_GRUPO)
 SEXO_ROTULO = {"feminino": "Mulheres", "masculino": "Homens"}
 
 METRICAS = {
-    "taxa": "Taxa por 100 mil",
+    "taxa": "Taxa",
     "razao": "Risco vs. branca",
     "contagem": "Óbitos",
-    "pct": "% do total",
+    "pct": "%",
 }
-EIXOS = {"grupo": "Raça/cor", "sexo": "Sexo", "faixa": "Faixa etária"}
+EIXOS = {"grupo": "Raça/cor", "sexo": "Sexo", "faixa": "Idade"}
 
 
 def _dados(f: Filtros) -> pd.DataFrame:
@@ -153,48 +154,42 @@ def tabela(t: pd.DataFrame, x: str, serie: str, faixas: dict[str, str]) -> pd.Da
     })
 
 
-def render(f: Filtros) -> None:
-    c1, c2 = st.columns([3, 2])
-    metrica = c1.segmented_control("Métrica", list(METRICAS), format_func=METRICAS.get,
-                                   key="g_metrica", default="taxa") or "taxa"
-    eixo = c2.segmented_control("Comparar por", list(EIXOS), format_func=EIXOS.get,
-                                key="g_eixo", default="grupo") or "grupo"
+NOTA = ("Óbitos por agressão (SIM) com a população do mesmo grupo no denominador. Risco vs. branca = taxa do "
+        "grupo ÷ taxa do grupo branco com o mesmo sexo ou faixa (linha tracejada = 1). Barras hachuradas: menos "
+        f"de {MINIMO_ESTAVEL} óbitos, estimativa instável (RN21). Raça/cor e idade ignoradas ficam fora das taxas.")
 
-    faixas = _faixas_rotulos()
-    t, x, serie = preparar(_dados(f), f, eixo, metrica)
-    if t.empty or t["valor"].isna().all():
-        motivo = (" O risco é calculado em relação ao grupo branco, que não tem óbitos neste recorte."
-                  if metrica == "razao" else "")
-        st.info(f"Sem dados para esta métrica no recorte selecionado.{motivo}", icon="🔍")
-        return
 
-    st.plotly_chart(figura(t, x, serie, metrica, f, faixas), use_container_width=True,
-                    config={"displaylogo": False, "locale": "pt-BR"})
-    notas = []
-    if t["instavel"].any():
-        notas.append("Barras hachuradas: menos de 10 óbitos, estimativa instável (RN21).")
-    if metrica in ("taxa", "razao"):
-        notas.append("Raça/cor e idade ignoradas ficam fora das taxas, por não terem população correspondente.")
-    if metrica == "razao":
-        notas.append("Cada barra é a taxa do grupo ÷ a taxa do grupo branco com o mesmo "
-                     + ("sexo" if eixo != "faixa" else "faixa etária")
-                     + "; a linha tracejada marca o grupo branco (= 1).")
-    if metrica == "pct":
-        notas.append(f"Percentuais somam 100% dentro de cada {'sexo' if serie == 'sexo' else 'grupo racial'}.")
-    if notas:
-        st.caption(" ".join(notas))
+def render(f: Filtros, altura: int = 400) -> None:
+    with cartao("interseccional", "Comparativo interseccional · óbitos por agressão", NOTA):
+        c1, c2 = st.columns([2.6, 1], vertical_alignment="center")
+        metrica = c1.segmented_control("Métrica", list(METRICAS), format_func=METRICAS.get, key="g_metrica",
+                                       default="taxa", label_visibility="collapsed") or "taxa"
+        eixo = c2.selectbox("Comparar por", list(EIXOS), format_func=EIXOS.get,
+                            key="g_eixo", label_visibility="collapsed")
 
-    with st.expander("Ver tabela"):
-        tab = tabela(t, x, serie, faixas)
-        st.dataframe(
-            tab, hide_index=True, use_container_width=True,
-            column_config={
-                "Óbitos": st.column_config.NumberColumn(format="localized"),
-                "População": st.column_config.NumberColumn(format="localized"),
-                "Taxa por 100 mil": st.column_config.NumberColumn(format="%.2f"),
-                "Risco vs. branca": st.column_config.NumberColumn(format="%.2f×"),
-                "% da série": st.column_config.NumberColumn(format="%.1f%%"),
-            },
-        )
-        st.download_button("Baixar CSV", tab.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
-                           file_name=f"comparativo_{eixo}_{metrica}_{f.ano}.csv", mime="text/csv")
+        faixas = _faixas_rotulos()
+        t, x, serie = preparar(_dados(f), f, eixo, metrica)
+        if t.empty or t["valor"].isna().all():
+            motivo = (" O risco é calculado em relação ao grupo branco, que não tem óbitos neste recorte."
+                      if metrica == "razao" else "")
+            st.info(f"Sem dados para esta métrica no recorte selecionado.{motivo}", icon="🔍")
+            return
+
+        fig = figura(t, x, serie, metrica, f, faixas)
+        fig.update_layout(height=altura, margin=dict(t=30, b=0, l=0, r=0))
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "locale": "pt-BR"})
+
+        with st.expander("Dados"):
+            tab = tabela(t, x, serie, faixas)
+            st.dataframe(
+                tab, hide_index=True, width="stretch",
+                column_config={
+                    "Óbitos": st.column_config.NumberColumn(format="localized"),
+                    "População": st.column_config.NumberColumn(format="localized"),
+                    "Taxa por 100 mil": st.column_config.NumberColumn(format="%.2f"),
+                    "Risco vs. branca": st.column_config.NumberColumn(format="%.2f×"),
+                    "% da série": st.column_config.NumberColumn(format="%.1f%%"),
+                },
+            )
+            st.download_button("Baixar CSV", tab.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
+                               file_name=f"comparativo_{eixo}_{metrica}_{f.ano}.csv", mime="text/csv")
