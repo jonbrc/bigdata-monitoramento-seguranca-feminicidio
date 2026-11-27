@@ -6,6 +6,9 @@ import db
 import filtros
 import graficos
 import kpis
+import perfil
+import policia_saude
+import sobre
 import territorio
 
 st.set_page_config(
@@ -55,6 +58,10 @@ if f.sim_parcial:
         icon="⚠️",
     )
 
+abas = st.tabs(["Visão geral", "Perfil da violência", "Território", "Polícia × saúde", "Sobre os dados"])
+with abas[4]:
+    sobre.render(opcoes)
+
 where_sim, params_sim = f.where()
 try:
     sim = db.consultar(
@@ -64,11 +71,12 @@ except Exception as erro:
     falhar(erro)
 
 if sim["populacao"] == 0 and sim["obitos"] == 0:
-    st.info(
-        "Nenhum dado para essa combinação de filtros. Amplie o recorte (por exemplo, remova uma "
-        "faixa etária ou um grupo racial) ou use **Limpar filtros** na barra lateral.",
-        icon="🔍",
-    )
+    for aba in abas[:4]:
+        aba.info(
+            "Nenhum dado para essa combinação de filtros. Amplie o recorte (por exemplo, remova uma "
+            "faixa etária ou um grupo racial) ou use **Limpar filtros** na barra lateral.",
+            icon="🔍",
+        )
     st.stop()
 
 try:
@@ -96,25 +104,32 @@ def cartoes(lista: list[kpis.Kpi], larguras: list[float] | None = None) -> None:
                 st.caption(f":orange[⚠️ {k.alerta}]")
 
 
-st.subheader("Gênero × raça/cor · óbitos por agressão (SIM)")
-cartoes(interseccionais, [1, 1, 1.25, 1])
+with abas[0]:
+    st.subheader("Gênero × raça/cor · óbitos por agressão (SIM)")
+    cartoes(interseccionais, [1, 1, 1.25, 1])
 
-st.subheader("Feminicídio · registros policiais (Sinesp)")
-cartoes(policiais)
-if f.sexo != "todos" or f.grupos or f.faixas:
-    st.caption("O Sinesp não traz raça/cor nem idade: estes indicadores seguem só os filtros de ano e território.")
+    st.subheader("Feminicídio · registros policiais (Sinesp)")
+    cartoes(policiais)
+    if f.sexo != "todos" or f.grupos or f.faixas:
+        st.caption("O Sinesp não traz raça/cor nem idade: estes indicadores seguem só os filtros de ano e território.")
 
-st.subheader("Comparativo interseccional · óbitos por agressão (SIM)")
-try:
-    graficos.render(f)
-except Exception as erro:
-    falhar(erro)
+    st.subheader("Comparativo interseccional · óbitos por agressão (SIM)")
+    try:
+        graficos.render(f)
+    except Exception as erro:
+        falhar(erro)
 
-st.subheader("Território")
-try:
-    territorio.render(f, opcoes)
-except Exception as erro:
-    falhar(erro)
+abas_dados = [
+    (abas[1], lambda: perfil.render(f)),
+    (abas[2], lambda: territorio.render(f, opcoes)),
+    (abas[3], lambda: policia_saude.render(f, opcoes)),
+]
+for aba, desenhar in abas_dados:
+    with aba:
+        try:
+            desenhar()
+        except Exception as erro:
+            falhar(erro)
 
 with st.sidebar:
     st.divider()
