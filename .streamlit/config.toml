@@ -1,0 +1,8 @@
+# Tema visual do dashboard (lido pelo Streamlit ao rodar a partir da raiz do repositório, local ou no Community Cloud).
+[theme]
+base = "light"
+primaryColor = "#12355b"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f2f1"
+textColor = "#252423"
+font = "sans serif"

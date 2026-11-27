@@ -10,6 +10,7 @@ import streamlit as st
 import db
 from filtros import CHAVES, Filtros, Opcoes
 from kpis import MINIMO_ESTAVEL, numero
+from layout import cartao
 
 SUPRESSAO = 3
 COR = "#2a78d6"
@@ -140,7 +141,7 @@ def _trilha(f: Filtros, opcoes: Opcoes) -> None:
         passos.append((", ".join(f.regioes), (f.regioes, [])))
     if f.ufs:
         passos.append((", ".join(f.ufs), (f.regioes, f.ufs)))
-    colunas = st.columns([1.2] * len(passos) + [max(1, 8 - len(passos))])
+    colunas = st.columns([1] * len(passos) + [max(0.5, 4 - len(passos))])
     for i, (rotulo, destino) in enumerate(passos):
         atual = i == len(passos) - 1
         colunas[i].button(("› " if i else "") + rotulo, key=f"trilha_{i}", disabled=atual,
@@ -225,12 +226,13 @@ def _mapa(df: pd.DataFrame, indicador: str, rotulo: str, nivel_atual: str) -> go
 
 def render(f: Filtros, opcoes: Opcoes) -> None:
     nivel_atual = nivel(f)
-    _trilha(f, opcoes)
-
-    indicador = st.segmented_control(
-        "Indicador", list(INDICADORES), format_func=lambda k: INDICADORES[k][0],
-        key="t_indicador", default="taxa_sim",
-    ) or "taxa_sim"
+    with cartao("terr_barra"):
+        c1, c2 = st.columns([3, 1.2], vertical_alignment="center")
+        with c1:
+            _trilha(f, opcoes)
+        with c2:
+            indicador = st.selectbox("Indicador", list(INDICADORES), format_func=lambda k: INDICADORES[k][0],
+                                     key="t_indicador", label_visibility="collapsed")
     rotulo = INDICADORES[indicador][1]
     if indicador == "taxa_sim" and f.sim_parcial:
         rotulo += " · anualizada"
@@ -253,22 +255,35 @@ def render(f: Filtros, opcoes: Opcoes) -> None:
         st.info("Nenhum território com valor exibível para este indicador no recorte selecionado.", icon="🔍")
         return
 
+    notas = [rotulo + "."]
+    if nivel_atual != "municipio":
+        notas.append("Clique numa barra ou num ponto do mapa para aprofundar; a trilha acima volta aos níveis anteriores.")
+    else:
+        notas.append(f"Proteção de dados (RN22): 1 ou 2 casos aparecem como \"≤ 2\" e taxas só são calculadas a "
+                     f"partir de {MINIMO_ESTAVEL} casos; no mapa, esses municípios ficam em cinza.")
+    if indicador.startswith("taxa"):
+        notas.append(f"Barras hachuradas: menos de {MINIMO_ESTAVEL} casos, estimativa instável (RN21).")
+    if indicador in ("taxa_fem", "feminicidios"):
+        notas.append("Indicadores do Sinesp seguem só os filtros de ano e território.")
+    nota = " ".join(notas)
+
     recorte = "_".join([str(f.ano), *f.regioes, *f.ufs])
+    altura = 520
     c1, c2 = st.columns([1, 1.25])
-    with c1:
-        st.markdown(f"**{titulo}**")
+    with c1, cartao("terr_ranking", titulo, nota):
         chave_barras = f"barras_{nivel_atual}_{indicador}_{recorte}"
+        barras = _barras(ranking, indicador, rotulo)
+        barras.update_layout(height=max(altura, barras.layout.height or 0), margin=dict(t=10, b=0, l=0, r=40))
         if alvo_clique:
-            st.plotly_chart(_barras(ranking, indicador, rotulo), width="stretch",
-                            key=chave_barras, on_select=partial(_ao_clicar, chave_barras, alvo_clique, opcoes),
+            st.plotly_chart(barras, width="stretch", key=chave_barras,
+                            on_select=partial(_ao_clicar, chave_barras, alvo_clique, opcoes),
                             selection_mode="points", config={"displayModeBar": False})
         else:
-            st.plotly_chart(_barras(ranking, indicador, rotulo), width="stretch",
-                            key=chave_barras, config={"displayModeBar": False})
-    with c2:
-        st.markdown("**Mapa**" + (" · clique numa UF para aprofundar" if nivel_atual != "municipio" else ""))
+            st.plotly_chart(barras, width="stretch", key=chave_barras, config={"displayModeBar": False})
+    with c2, cartao("terr_mapa", "Mapa", nota):
         chave_mapa = f"mapa_{nivel_atual}_{indicador}_{recorte}"
         figura_mapa = _mapa(mapa_df, indicador, rotulo, nivel_atual)
+        figura_mapa.update_layout(height=max(altura, barras.layout.height or 0))
         if nivel_atual != "municipio":
             st.plotly_chart(figura_mapa, width="stretch", key=chave_mapa,
                             on_select=partial(_ao_clicar, chave_mapa, "sigla_uf", opcoes), selection_mode="points",
@@ -276,18 +291,3 @@ def render(f: Filtros, opcoes: Opcoes) -> None:
         else:
             st.plotly_chart(figura_mapa, width="stretch", key=chave_mapa,
                             config={"displaylogo": False, "scrollZoom": True})
-
-    notas = []
-    if nivel_atual != "municipio":
-        notas.append("Clique numa barra ou num ponto do mapa para aprofundar; use a trilha acima para voltar.")
-    else:
-        notas.append(f"Proteção de dados (RN22): municípios com 1 ou 2 casos aparecem como \"≤ 2\", e taxas "
-                     f"municipais só são calculadas a partir de {MINIMO_ESTAVEL} casos; no mapa, esses municípios "
-                     "ficam em cinza. Em municípios pequenos, poucos casos geram taxas altas e voláteis: compare "
-                     "também o número de casos (passe o mouse ou use o indicador de contagem).")
-    if indicador.startswith("taxa") and nivel_atual != "municipio" and ranking.apply(
-            lambda r: _instavel(indicador, r), axis=1).any():
-        notas.append("Barras hachuradas: menos de 10 casos, estimativa instável (RN21).")
-    if indicador in ("taxa_fem", "feminicidios") and (f.sexo != "todos" or f.grupos or f.faixas):
-        notas.append("Indicadores do Sinesp seguem só os filtros de ano e território.")
-    st.caption(" ".join(notas))

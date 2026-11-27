@@ -1,4 +1,4 @@
-"""Aba "Perfil da violência" do dashboard: local do óbito e meio da agressão por sexo, mapa de calor das taxas por faixa etária × raça/cor e evolução mensal das taxas (SIM)."""
+"""Perfil da violência no dashboard (SIM): local do óbito e meio da agressão por sexo, mapa de calor das taxas por faixa etária × raça/cor e evolução mensal das taxas."""
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,14 +8,13 @@ import db
 from filtros import Filtros
 from graficos import CORES_GRUPO, CORES_SEXO, ORDEM_GRUPO, SEXO_ROTULO
 from kpis import MINIMO_ESTAVEL, numero
+from layout import cartao
 from territorio import ESCALA, SUPRESSAO
 
 DIMENSOES = {
     "local": ("local_obito", "dim_local_obito", "Local do óbito"),
     "meio": ("meio_agressao", "dim_meio_agressao", "Meio da agressão"),
 }
-IGNORADOS = {"local_ignorado", "meio_nao_especificado"}
-COR_IGNORADO = "#b5b4ae"
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 GRUPOS_EVOLUCAO = ["Branca", "Negra", "Indígena"]
 SERIES = {"grupo": "Raça/cor", "sexo": "Sexo"}
@@ -70,39 +69,18 @@ def _figura_distribuicao(df: pd.DataFrame, titulo_eixo: str) -> go.Figure:
     return fig
 
 
-def _destaque(df: pd.DataFrame) -> str | None:
-    if set(CORES_SEXO) - set(df["sexo"]):
-        return None
-    base = df[~df["codigo"].isin(IGNORADOS)].pivot_table(index="descricao", columns="sexo", values="pct",
-                                                           aggfunc="sum").fillna(0)
-    if base.empty:
-        return None
-    categoria = (base["Mulheres"] - base["Homens"]).idxmax()
-    m, h = base.at[categoria, "Mulheres"], base.at[categoria, "Homens"]
-    if m <= h:
-        return None
-    return f"Maior sobrerrepresentação feminina: **{categoria}**, com {numero(m, 1)}% dos óbitos de mulheres contra {numero(h, 1)}% dos de homens."
-
-
-def _bloco_distribuicao(f: Filtros, dimensao: str, coluna) -> None:
+def _bloco_distribuicao(f: Filtros, dimensao: str, altura: int) -> None:
     titulo = DIMENSOES[dimensao][2]
-    with coluna:
-        st.markdown(f"**{titulo} por sexo**")
+    nota = (f"% dos óbitos por agressão de cada sexo no recorte (SIM). Com menos de {MINIMO_ESTAVEL} óbitos num "
+            "sexo, os percentuais são instáveis.")
+    with cartao(f"perfil_{dimensao}", f"{titulo} por sexo", nota):
         df = _distribuicao(f, dimensao)
         if df.empty:
             st.info("Sem óbitos no recorte selecionado.", icon="🔍")
             return
-        st.plotly_chart(_figura_distribuicao(df, titulo), width="stretch", key=f"perfil_{dimensao}",
-                        config={"displayModeBar": False})
-        notas = []
-        destaque = _destaque(df)
-        if destaque:
-            notas.append(destaque)
-        pequenos = [s for s, n in df.groupby("sexo")["obitos"].sum().items() if n < MINIMO_ESTAVEL]
-        if pequenos:
-            notas.append(f"Menos de {MINIMO_ESTAVEL} óbitos para {', '.join(pequenos).lower()}: percentuais instáveis.")
-        if notas:
-            st.caption(" ".join(notas))
+        fig = _figura_distribuicao(df, titulo)
+        fig.update_layout(height=altura, margin=dict(t=30, b=0, l=0, r=40))
+        st.plotly_chart(fig, width="stretch", key=f"perfil_{dimensao}", config={"displayModeBar": False})
 
 
 def _calor(f: Filtros) -> pd.DataFrame:
@@ -145,16 +123,15 @@ def _figura_calor(df: pd.DataFrame, f: Filtros) -> go.Figure:
 
 def _bloco_calor(f: Filtros) -> None:
     anual = " (anualizada)" if f.sim_parcial else ""
-    st.markdown(f"**Taxa de óbitos por agressão por 100 mil hab.{anual} · faixa etária × raça/cor**")
-    df = _calor(f)
-    if df.empty or df["taxa"].isna().all():
-        st.info("Sem população ou óbitos para montar o mapa de calor neste recorte.", icon="🔍")
-        return
-    st.plotly_chart(_figura_calor(df, f), width="stretch", key="perfil_calor", config={"displayModeBar": False})
-    sexo = {"todos": "ambos os sexos", "feminino": "só mulheres", "masculino": "só homens"}[f.sexo]
-    st.caption(f"Recorte: {sexo} (filtro Sexo da barra lateral). Cada célula usa como denominador a população do "
-               f"mesmo grupo e faixa. * menos de {MINIMO_ESTAVEL} óbitos: estimativa instável (RN21). Raça/cor e "
-               "idade ignoradas ficam fora, por não terem população correspondente.")
+    nota = ("Óbitos por agressão por 100 mil hab., com a população do mesmo grupo e faixa no denominador. Segue o "
+            f"filtro Sexo da barra lateral. * menos de {MINIMO_ESTAVEL} óbitos: estimativa instável (RN21). Raça/cor "
+            "e idade ignoradas ficam fora, por não terem população correspondente.")
+    with cartao("perfil_calor", f"Taxa por 100 mil{anual} · faixa etária × raça/cor", nota):
+        df = _calor(f)
+        if df.empty or df["taxa"].isna().all():
+            st.info("Sem população ou óbitos para montar o mapa de calor neste recorte.", icon="🔍")
+            return
+        st.plotly_chart(_figura_calor(df, f), width="stretch", key="perfil_calor", config={"displayModeBar": False})
 
 
 def _evolucao(f: Filtros, serie: str) -> pd.DataFrame:
@@ -230,33 +207,41 @@ def _figura_evolucao(df: pd.DataFrame, serie: str, f: Filtros) -> go.Figure:
     return fig
 
 
-def _bloco_evolucao(f: Filtros) -> None:
-    c1, c2 = st.columns([3, 2])
-    c1.markdown("**Evolução mensal da taxa de óbitos por agressão**")
-    serie = c2.segmented_control("Séries", list(SERIES), format_func=SERIES.get, key="p_serie",
-                                 default="grupo", label_visibility="collapsed") or "grupo"
-    df = _evolucao(f, serie)
-    if df.empty or df["taxa"].isna().all():
-        st.info("Sem população ou óbitos para a evolução mensal neste recorte.", icon="🔍")
-        return
-    st.plotly_chart(_figura_evolucao(df, serie, f), width="stretch", key="perfil_evolucao",
-                    config={"displayModeBar": False})
-    notas = ["Taxa do mês × 12, para comparar com as taxas anuais. A faixa cinza marca o ano selecionado; os "
-             "demais filtros valem para toda a série."]
-    if (df["obitos"] < MINIMO_ESTAVEL).any():
-        notas.append(f"Pontos vazados: menos de {MINIMO_ESTAVEL} óbitos no mês, estimativa instável.")
-    if serie == "grupo" and not f.grupos:
-        notas.append("Amarela fica de fora por padrão (poucos casos); selecione-a em Raça/cor para incluí-la.")
-    notas.append("Linha pontilhada: último mês de um ano preliminar do SIM, ainda incompleto; os meses anteriores "
-                 "a ele também podem crescer quando a base for consolidada.")
-    st.caption(" ".join(notas))
+NOTA_EVOLUCAO = ("Taxa do mês × 12, comparável às taxas anuais; a faixa cinza marca o ano selecionado e os demais "
+                 f"filtros valem para toda a série. Pontos vazados: menos de {MINIMO_ESTAVEL} óbitos no mês. Linha "
+                 "pontilhada: último mês de um ano preliminar do SIM, ainda incompleto. Amarela fica de fora por "
+                 "padrão (poucos casos); selecione-a em Raça/cor para incluí-la.")
+
+
+def bloco_evolucao(f: Filtros, altura: int = 400) -> None:
+    with cartao("evolucao", "Evolução mensal · óbitos por agressão por 100 mil", NOTA_EVOLUCAO):
+        serie = st.segmented_control("Séries", list(SERIES), format_func=SERIES.get, key="p_serie",
+                                     default="grupo", label_visibility="collapsed") or "grupo"
+        df = _evolucao(f, serie)
+        if df.empty or df["taxa"].isna().all():
+            st.info("Sem população ou óbitos para a evolução mensal neste recorte.", icon="🔍")
+            return
+        fig = _figura_evolucao(df, serie, f)
+        fig.update_layout(height=altura, margin=dict(t=30, b=0, l=0, r=0),
+                          yaxis_title="Taxa mensal anualizada")
+        meses = list(dict.fromkeys(df["rotulo"]))
+        fig.update_xaxes(tickangle=0, tickmode="array", tickvals=meses[::3])
+        st.plotly_chart(fig, width="stretch", key="perfil_evolucao", config={"displayModeBar": False})
+        with st.expander("Dados"):
+            tab = df.assign(obitos=[_casos(v) for v in df["obitos"]])[
+                ["rotulo", "serie", "obitos", "populacao", "taxa"]].rename(columns={
+                "rotulo": "Mês", "serie": SERIES[serie], "obitos": "Óbitos", "populacao": "População",
+                "taxa": "Taxa anualizada"})
+            st.dataframe(tab, hide_index=True, width="stretch",
+                         column_config={"Taxa anualizada": st.column_config.NumberColumn(format="%.2f")})
+            st.download_button("Baixar CSV", tab.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
+                               file_name=f"evolucao_mensal_{serie}.csv", mime="text/csv", key="csv_evolucao")
 
 
 def render(f: Filtros) -> None:
     c1, c2 = st.columns(2)
-    _bloco_distribuicao(f, "local", c1)
-    _bloco_distribuicao(f, "meio", c2)
-    st.divider()
+    with c1:
+        _bloco_distribuicao(f, "local", 420)
+    with c2:
+        _bloco_distribuicao(f, "meio", 420)
     _bloco_calor(f)
-    st.divider()
-    _bloco_evolucao(f)

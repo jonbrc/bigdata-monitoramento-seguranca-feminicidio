@@ -1,4 +1,4 @@
-"""Aba "Polícia × saúde" do dashboard: compara o registro policial (Sinesp) e o de saúde (SIM) das mortes de mulheres, mês a mês e por território, e mostra quanto das mortes violentas de mulheres foi tipificado como feminicídio."""
+"""Aba "Polícia × saúde" do dashboard (KPIs e gráficos): compara o registro policial (Sinesp) e o de saúde (SIM) das mortes de mulheres, mês a mês e por território, e mostra quanto das mortes violentas de mulheres foi tipificado como feminicídio."""
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -6,7 +6,8 @@ import streamlit as st
 
 import db
 from filtros import Filtros, Opcoes
-from kpis import MINIMO_ESTAVEL, numero
+from kpis import MINIMO_ESTAVEL, Kpi, numero
+from layout import cartao, kpi
 from perfil import MESES
 
 SERIES = {
@@ -162,45 +163,67 @@ def _figura_pct(df: pd.DataFrame, media: float | None) -> go.Figure:
     return fig
 
 
+NOTA_MENSAL = ("Mulheres mortas por mês nos meses cobertos pelo SIM; segue só os filtros de ano e território (o "
+               "Sinesp não traz raça/cor nem idade). Mortes violentas = feminicídio, homicídio doloso, "
+               "lesão corporal seguida de morte e latrocínio com vítima mulher. Linha pontilhada: último mês de um ano "
+               "preliminar do SIM, ainda incompleto (a queda não é real). Faixa cinza = ano selecionado.")
+NOTA_HALTERES = ("O SIM conta pelo município de residência e pela causa básica (agressão, CID X85–Y09); o Sinesp, "
+                 "pelo local da ocorrência e pela tipificação policial. Quanto mais distantes os pontos, maior a "
+                 "divergência entre as fontes. Período: meses cobertos pelo SIM.")
+NOTA_PCT = ("Feminicídios ÷ mortes violentas de mulheres no ano completo do Sinesp, como no KPI. Percentual baixo pode "
+            "indicar subnotificação ou tipificação tardia, não necessariamente menos violência de gênero. Barras "
+            f"hachuradas: menos de {MINIMO_ESTAVEL} mortes violentas.")
+
+
+def _kpis(mensal: pd.DataFrame, f: Filtros) -> None:
+    ano = mensal[mensal["ano"] == f.ano]
+    sim, mv, fem = (int(ano[c].sum()) for c in ("obitos_sim", "mortes_violentas", "feminicidios"))
+    meses = f"{len(ano)} meses de {f.ano}" if len(ano) < 12 else str(f.ano)
+    cartoes = [
+        (Kpi("Mulheres mortas por agressão", numero(sim), f"SIM · {meses}", "Óbitos de mulheres com causa básica de "
+             "agressão (CID X85–Y09), pelo município de residência."), "SIM"),
+        (Kpi("Mortes violentas de mulheres", numero(mv), f"Sinesp · {meses}", "Feminicídio, homicídio doloso, lesão "
+             "corporal seguida de morte e latrocínio com vítima mulher."), "SINESP"),
+        (Kpi("Feminicídios", numero(fem), f"Sinesp · {meses}", "Vítimas de feminicídio registradas pela polícia."),
+         "SINESP"),
+        (Kpi("SIM ÷ Sinesp", numero(sim / mv, 2) + "×" if mv else "—", "óbitos SIM ÷ mortes violentas Sinesp",
+             "Acima de 1: a saúde registra mais mortes de mulheres por agressão do que a polícia registra mortes "
+             "violentas de mulheres no mesmo território e período."), "SIM"),
+    ]
+    for coluna, (k, fonte) in zip(st.columns(len(cartoes), gap="small"), cartoes):
+        with coluna:
+            kpi(k, fonte)
+
+
 def render(f: Filtros, opcoes: Opcoes) -> None:
-    st.caption("Esta aba compara as duas fontes só para mulheres e segue apenas os filtros de ano e território: "
-               "o Sinesp não traz raça/cor nem idade.")
-
-    st.markdown("**Mês a mês: registro policial × registro de saúde**")
     mensal = _mensal(f)
-    st.plotly_chart(_figura_mensal(mensal, f), width="stretch", key="ps_mensal", config={"displayModeBar": False})
-    st.caption("Meses cobertos pelo SIM. Linha pontilhada: último mês de um ano preliminar do SIM, ainda incompleto, "
-               "por isso a queda não é real. A faixa cinza marca o ano selecionado. Mortes violentas = feminicídio, homicídio doloso, lesão corporal seguida de morte "
-               "e latrocínio com vítima mulher.")
-    with st.expander("Ver tabela mensal"):
-        tab = mensal[["rotulo", "obitos_sim", "mortes_violentas", "feminicidios"]].rename(columns={
-            "rotulo": "Mês", **{k: v[0] for k, v in SERIES.items()}})
-        st.dataframe(tab, hide_index=True, width="stretch")
-        st.download_button("Baixar CSV", tab.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                           file_name="policia_saude_mensal.csv", mime="text/csv", key="ps_csv_mensal")
+    _kpis(mensal, f)
 
-    st.divider()
+    with cartao("ps_mensal", "Mês a mês · registro policial × registro de saúde (mulheres)", NOTA_MENSAL):
+        fig = _figura_mensal(mensal, f)
+        fig.update_layout(height=360, margin=dict(t=30, b=0, l=0, r=0))
+        st.plotly_chart(fig, width="stretch", key="ps_mensal", config={"displayModeBar": False})
+        with st.expander("Dados"):
+            tab = mensal[["rotulo", "obitos_sim", "mortes_violentas", "feminicidios"]].rename(columns={
+                "rotulo": "Mês", **{k: v[0] for k, v in SERIES.items()}})
+            st.dataframe(tab, hide_index=True, width="stretch")
+            st.download_button("Baixar CSV", tab.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                               file_name="policia_saude_mensal.csv", mime="text/csv", key="ps_csv_mensal")
+
     df, campo = _territorios(f, opcoes)
     if df.empty:
         st.info("Nenhum território com dados neste recorte.", icon="🔍")
         return
     nivel = "região" if campo == "regiao" else "UF"
+    altura = max(320, 30 * len(df) + 90)
     c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"**Polícia × saúde por {nivel} · {f.ano}**")
-        st.plotly_chart(_figura_halteres(df), width="stretch", key=f"ps_halteres_{campo}",
-                        config={"displayModeBar": False})
-        st.caption("Os dois registros medem coisas parecidas, mas não iguais: o SIM conta pelo município de "
-                   "residência e pela causa básica (agressão, CID X85–Y09); o Sinesp, pelo local da ocorrência e "
-                   "pela tipificação policial. Quanto mais distantes os pontos, maior a divergência entre as fontes.")
-    with c2:
-        st.markdown(f"**Mortes violentas de mulheres tipificadas como feminicídio · {f.ano}**")
+    with c1, cartao("ps_halteres", f"Polícia × saúde por {nivel} · {f.ano}", NOTA_HALTERES):
+        fig = _figura_halteres(df)
+        fig.update_layout(height=altura, margin=dict(t=30, b=0, l=0, r=10))
+        st.plotly_chart(fig, width="stretch", key=f"ps_halteres_{campo}", config={"displayModeBar": False})
+    with c2, cartao("ps_pct", f"% tipificadas como feminicídio · {f.ano}", NOTA_PCT):
         total_fem, total_mv = df["feminicidios"].sum(), df["mortes_violentas_ano"].sum()
         media = 100 * total_fem / total_mv if total_mv else None
-        st.plotly_chart(_figura_pct(df, media), width="stretch", key=f"ps_pct_{campo}",
-                        config={"displayModeBar": False})
-        notas = ["Ano completo do Sinesp, como no cartão de KPI. Percentual baixo pode indicar subnotificação ou "
-                 "tipificação tardia do feminicídio, não necessariamente menos violência de gênero."]
-        if (df["mortes_violentas_ano"] < MINIMO_ESTAVEL).any():
-            notas.append(f"Barras hachuradas: menos de {MINIMO_ESTAVEL} mortes violentas, estimativa instável.")
-        st.caption(" ".join(notas))
+        fig = _figura_pct(df, media)
+        fig.update_layout(height=altura, margin=dict(t=30, b=0, l=0, r=50))
+        st.plotly_chart(fig, width="stretch", key=f"ps_pct_{campo}", config={"displayModeBar": False})
