@@ -4,12 +4,12 @@ Projeto prático da disciplina **Big Data & Analytics** (UCSal): pipeline de dad
 
 ### Grupo
 
-| Integrante | Matrícula |
+| Integrante |  
 |---|---|
-| João Bruno Reis Carvalho dos Santos | [matrícula] |
-| Lucas Danilo Santos Araújo | [matrícula] |
-| Maria Fernanda Pereira Barcante Costa | [matrícula] |
-| Rafael Farias Castro | [matrícula] |
+| João Bruno Reis Carvalho dos Santos | 
+| Lucas Danilo Santos Araújo | 
+| Maria Fernanda Pereira Barcante Costa | 
+| Rafael Farias Castro | 
 
 ## Objetivo
 
