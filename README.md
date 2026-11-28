@@ -2,7 +2,14 @@
 
 Projeto prático da disciplina **Big Data & Analytics** (UCSal): pipeline de dados públicos de segurança e saúde (ETL em Python), modelagem em estrela e carga em PostgreSQL provisionado no Aiven via Terraform, como base de um dashboard de análise interseccional de **gênero × raça/cor**.
 
-**Grupo:** João Bruno Reis Carvalho dos Santos · Lucas Danilo Santos Araújo · Maria Fernanda Pereira Barcante Costa · Rafael Farias Castro
+### Grupo
+
+| Integrante | Matrícula |
+|---|---|
+| João Bruno Reis Carvalho dos Santos | [matrícula] |
+| Lucas Danilo Santos Araújo | [matrícula] |
+| Maria Fernanda Pereira Barcante Costa | [matrícula] |
+| Rafael Farias Castro | [matrícula] |
 
 ## Objetivo
 
