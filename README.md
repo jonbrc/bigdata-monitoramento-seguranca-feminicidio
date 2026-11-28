@@ -4,19 +4,10 @@ Projeto prático da disciplina **Big Data & Analytics** (UCSal): pipeline de dad
 
 ### Grupo
 
-<<<<<<< HEAD
 - João Bruno Reis Carvalho dos Santos
 - Lucas Danilo Santos Araújo
 - Maria Fernanda Pereira Barcante Costa
 - Rafael Farias Castro
-=======
-| Integrante |  
-|---|---|
-| João Bruno Reis Carvalho dos Santos | 
-| Lucas Danilo Santos Araújo | 
-| Maria Fernanda Pereira Barcante Costa | 
-| Rafael Farias Castro | 
->>>>>>> 9d101bdb79b1ee90433e949c411f00f016a5f5f5
 
 ## Objetivo
 
